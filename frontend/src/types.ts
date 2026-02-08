@@ -1,46 +1,18 @@
-export type Locale = "en" | "ru" | "zh";
+export type Locale = string;
 
-export type UiTexts = {
-  loading_content: string;
-  content_unavailable: string;
-  detail_location: string;
-  detail_email: string;
-  detail_socials: string;
-  contact_name_label: string;
-  contact_name_placeholder: string;
-  contact_email_label: string;
-  contact_email_placeholder: string;
-  contact_message_label: string;
-  contact_message_placeholder: string;
-  contact_submit: string;
-  contact_sending: string;
-  contact_success: string;
-  contact_error_default: string;
-  newsletter_placeholder: string;
-  newsletter_button: string;
-  theme_light?: string;
-  theme_dark?: string;
-  lang_en?: string;
-  lang_ru?: string;
-  lang_zh?: string;
+export type I18nDictionary = Record<string, string>;
+
+export type LanguageOption = {
+  code: Locale;
+  name: string;
+  is_default: boolean;
+  order: number;
 };
 
-export type SiteSettings = {
-  id: number;
-  brand_name: string;
-  contact_email: string;
-  footer_title: string;
-  footer_description: string;
-  footer_explore_title: string;
-  footer_social_title: string;
-  footer_newsletter_title: string;
-  newsletter_note: string;
-  seo_title: string;
-  seo_description: string;
-  seo_image: string;
-  ui: UiTexts;
-  created_at: string;
-  updated_at: string;
+export type ContactMessagePayload = {
+  name: string;
+  email: string;
+  message: string;
 };
 
 export type SectionImage = {
@@ -52,67 +24,55 @@ export type SectionImage = {
   is_published: boolean;
 };
 
-export type PageSection = {
+export type StructureMenuItem = {
+  id: number;
+  href: string;
+  label: string;
+  label_key: string;
+  open_in_new_tab: boolean;
+};
+
+export type StructureSection = {
   id: number;
   key: string;
-  section_type:
-    | "hero"
-    | "rich_text"
-    | "cards"
-    | "gallery"
-    | "stories"
-    | "contact";
+  anchor: string;
+  section_type: "hero" | "rich_text" | "cards" | "gallery" | "stories" | "contact";
   title: string;
+  title_key: string;
   subtitle: string;
+  subtitle_key: string;
   body: string;
+  body_key: string;
   payload: Record<string, unknown>;
-  order: number;
-  is_published: boolean;
+  payload_keys: Record<string, string>;
   images: SectionImage[];
 };
 
-export type Page = {
-  id: number;
-  title: string;
-  slug: string;
-  is_home: boolean;
-  order: number;
-  is_published: boolean;
-  seo_title: string;
-  seo_description: string;
-  seo_image: string;
-  sections: PageSection[];
-  created_at: string;
-  updated_at: string;
-};
-
-export type MenuItem = {
-  id: number;
-  label: string;
-  href: string;
-  page_slug: string | null;
-  open_in_new_tab: boolean;
-  order: number;
-  is_published: boolean;
-};
-
-export type Menu = {
-  id: number;
-  code: string;
-  title: string;
-  location: "main" | "footer" | "social";
-  items: MenuItem[];
-};
-
-export type CmsBootstrap = {
+export type SiteStructureResponse = {
   lang: Locale;
-  site: SiteSettings;
-  page: Page;
-  menus: Menu[];
-};
-
-export type ContactMessagePayload = {
-  name: string;
-  email: string;
-  message: string;
+  languages: LanguageOption[];
+  site: {
+    brand_name: string;
+    brand_key: string;
+    footer_title: string;
+    footer_title_key: string;
+    footer_description: string;
+    footer_description_key: string;
+    footer_explore_title: string;
+    footer_explore_title_key: string;
+    footer_social_title: string;
+    footer_social_title_key: string;
+    footer_newsletter_title: string;
+    footer_newsletter_title_key: string;
+    newsletter_note: string;
+    newsletter_note_key: string;
+    contact_email: string;
+  };
+  pages: Array<{
+    slug: string;
+    is_active: boolean;
+    order: number;
+  }>;
+  menus: Record<string, StructureMenuItem[]>;
+  sections: StructureSection[];
 };

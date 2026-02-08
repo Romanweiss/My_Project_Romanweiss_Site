@@ -4,6 +4,7 @@ from django.utils.html import format_html
 from .models import (
     Category,
     Expedition,
+    Language,
     Menu,
     MenuItem,
     NavigationItem,
@@ -13,6 +14,8 @@ from .models import (
     SiteSettings,
     SocialLink,
     Story,
+    Translation,
+    TranslationKey,
 )
 
 
@@ -130,11 +133,56 @@ class MenuItemInline(admin.TabularInline):
     )
 
 
+class TranslationInline(admin.TabularInline):
+    model = Translation
+    extra = 0
+    fields = ("language", "text", "updated_at")
+    readonly_fields = ("updated_at",)
+
+
+@admin.register(Language)
+class LanguageAdmin(admin.ModelAdmin):
+    list_display = ("name", "code", "is_default", "is_active", "order", "updated_at")
+    list_editable = ("is_default", "is_active", "order")
+    list_filter = ("is_default", "is_active")
+    search_fields = ("name", "code")
+    ordering = ("order", "id")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(TranslationKey)
+class TranslationKeyAdmin(admin.ModelAdmin):
+    list_display = ("key", "namespace", "is_active", "updated_at")
+    list_editable = ("is_active",)
+    list_filter = ("namespace", "is_active")
+    search_fields = ("key", "namespace", "description")
+    ordering = ("namespace", "key")
+    readonly_fields = ("created_at", "updated_at")
+    inlines = (TranslationInline,)
+
+
+@admin.register(Translation)
+class TranslationAdmin(admin.ModelAdmin):
+    list_display = ("key", "language", "updated_at")
+    list_filter = ("language", "key__namespace")
+    search_fields = ("key__key", "text")
+    ordering = ("language__order", "key__key")
+    readonly_fields = ("created_at", "updated_at")
+
+
 @admin.register(Page)
 class PageAdmin(admin.ModelAdmin):
-    list_display = ("title", "slug", "is_home", "order", "is_published", "updated_at")
-    list_editable = ("is_home", "order", "is_published")
-    list_filter = ("is_home", "is_published")
+    list_display = (
+        "title",
+        "slug",
+        "is_active",
+        "is_home",
+        "order",
+        "is_published",
+        "updated_at",
+    )
+    list_editable = ("is_active", "is_home", "order", "is_published")
+    list_filter = ("is_active", "is_home", "is_published")
     search_fields = ("title", "slug", "seo_title", "seo_description")
     ordering = ("order", "id")
     prepopulated_fields = {"slug": ("title",)}
@@ -143,7 +191,17 @@ class PageAdmin(admin.ModelAdmin):
     fieldsets = (
         (
             "Core",
-            {"fields": ("title", "title_i18n", "slug", "is_home", "order", "is_published")},
+            {
+                "fields": (
+                    "title",
+                    "title_i18n",
+                    "slug",
+                    "is_active",
+                    "is_home",
+                    "order",
+                    "is_published",
+                )
+            },
         ),
         (
             "SEO",

@@ -3,14 +3,9 @@ import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const backendTarget = env.VITE_BACKEND_TARGET || "http://localhost:8000";
-
-  return {
-    plugins: [react()],
-    server: {
-      host: "0.0.0.0",
-      port: 5173,
-      proxy: {
+  const backendTarget = env.VITE_BACKEND_TARGET;
+  const proxy = backendTarget
+    ? {
         "/api": {
           target: backendTarget,
           changeOrigin: true,
@@ -19,7 +14,19 @@ export default defineConfig(({ mode }) => {
           target: backendTarget,
           changeOrigin: true,
         },
-      },
+        "/media": {
+          target: backendTarget,
+          changeOrigin: true,
+        },
+      }
+    : undefined;
+
+  return {
+    plugins: [react()],
+    server: {
+      host: "0.0.0.0",
+      port: 5173,
+      proxy,
     },
   };
 });

@@ -122,7 +122,7 @@ class Migration(migrations.Migration):
                 ("updated_at", models.DateTimeField(auto_now=True, verbose_name="Updated at")),
                 (
                     "brand_name",
-                    models.CharField(default="Romanweiss", max_length=120, verbose_name="Brand name"),
+                    models.CharField(default="Romanweiẞ", max_length=120, verbose_name="Brand name"),
                 ),
                 (
                     "hero_kicker",
@@ -134,7 +134,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "hero_title",
-                    models.CharField(default="Romanweiss", max_length=120, verbose_name="Hero title"),
+                    models.CharField(default="Romanweiẞ", max_length=120, verbose_name="Hero title"),
                 ),
                 (
                     "hero_subtitle",
@@ -243,7 +243,7 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "footer_title",
-                    models.CharField(default="Romanweiss", max_length=120, verbose_name="Footer title"),
+                    models.CharField(default="Romanweiẞ", max_length=120, verbose_name="Footer title"),
                 ),
                 (
                     "footer_description",

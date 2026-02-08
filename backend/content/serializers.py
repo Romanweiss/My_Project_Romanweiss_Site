@@ -16,8 +16,6 @@ from .models import (
     Story,
 )
 
-SUPPORTED_LANGS = {"en", "ru", "zh"}
-
 DEFAULT_UI_TEXTS = {
     "en": {
         "loading_content": "Loading content...",
@@ -46,16 +44,16 @@ DEFAULT_UI_TEXTS = {
     "ru": {
         "loading_content": "Загрузка контента...",
         "content_unavailable": "Контент недоступен.",
-        "detail_location": "Локация",
-        "detail_email": "Email",
+        "detail_location": "Место",
+        "detail_email": "Почта",
         "detail_socials": "Соцсети",
         "contact_name_label": "Имя",
         "contact_name_placeholder": "Ваше имя",
-        "contact_email_label": "Email",
+        "contact_email_label": "Почта",
         "contact_email_placeholder": "your@email.com",
         "contact_message_label": "Сообщение",
         "contact_message_placeholder": "Расскажите о вашем проекте...",
-        "contact_submit": "Отправить",
+        "contact_submit": "Отправить сообщение",
         "contact_sending": "Отправка...",
         "contact_success": "Сообщение отправлено. Спасибо.",
         "contact_error_default": "Не удалось отправить сообщение.",
@@ -72,7 +70,7 @@ DEFAULT_UI_TEXTS = {
         "content_unavailable": "内容不可用。",
         "detail_location": "地点",
         "detail_email": "邮箱",
-        "detail_socials": "社交",
+        "detail_socials": "社交媒体",
         "contact_name_label": "姓名",
         "contact_name_placeholder": "你的姓名",
         "contact_email_label": "邮箱",
@@ -95,11 +93,14 @@ DEFAULT_UI_TEXTS = {
 
 
 def _request_lang(serializer: serializers.Serializer) -> str:
+    explicit_lang = serializer.context.get("lang_code")
+    if isinstance(explicit_lang, str) and explicit_lang.strip():
+        return explicit_lang.strip().lower()
     request = serializer.context.get("request")
     raw = ""
     if request is not None:
         raw = str(request.query_params.get("lang", "")).strip().lower()
-    return raw if raw in SUPPORTED_LANGS else "en"
+    return raw or "en"
 
 
 def _localized_text(default_value: str, translations: dict, lang: str) -> str:

@@ -4,9 +4,12 @@ from rest_framework.routers import DefaultRouter
 from .viewsets import (
     CategoryViewSet,
     ExpeditionViewSet,
+    I18nDictionaryView,
     MenuDetailView,
     NavigationItemViewSet,
     PageViewSet,
+    SetLanguageView,
+    SiteStructureView,
     SiteBootstrapView,
     SiteSettingsDetailView,
     SiteSettingsViewSet,
@@ -26,6 +29,9 @@ v1_router = DefaultRouter()
 v1_router.register("v1/pages", PageViewSet, basename="v1-pages")
 
 urlpatterns = [
+    path("i18n/", I18nDictionaryView.as_view(), name="i18n-dictionary"),
+    path("i18n/set-language/", SetLanguageView.as_view(), name="set-language"),
+    path("site/structure/", SiteStructureView.as_view(), name="site-structure"),
     path("v1/site/", SiteSettingsDetailView.as_view(), name="v1-site"),
     path("v1/bootstrap/", SiteBootstrapView.as_view(), name="v1-bootstrap"),
     path("v1/menus/<slug:code>/", MenuDetailView.as_view(), name="v1-menu-detail"),

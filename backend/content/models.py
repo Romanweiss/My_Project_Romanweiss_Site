@@ -27,10 +27,33 @@ class SeoFieldsMixin(models.Model):
         abstract = True
 
 
+class Language(TimeStampedModel):
+    code = models.CharField("Code", max_length=12, unique=True)
+    name = models.CharField("Name", max_length=120)
+    is_default = models.BooleanField("Default", default=False)
+    is_active = models.BooleanField("Active", default=True)
+    order = models.PositiveIntegerField("Order", default=0)
+
+    class Meta:
+        verbose_name = "Language"
+        verbose_name_plural = "Languages"
+        ordering = ("order", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("is_default",),
+                condition=Q(is_default=True),
+                name="content_single_default_language",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"
+
+
 class SiteSettings(TimeStampedModel, SeoFieldsMixin):
-    brand_name = models.CharField("Brand name", max_length=120, default="Romanweiss")
+    brand_name = models.CharField("Brand name", max_length=120, default="Romanweiẞ")
     brand_name_i18n = models.JSONField("Brand name translations", default=dict, blank=True)
-    footer_title = models.CharField("Footer title", max_length=120, default="Romanweiss")
+    footer_title = models.CharField("Footer title", max_length=120, default="Romanweiẞ")
     footer_title_i18n = models.JSONField("Footer title translations", default=dict, blank=True)
     footer_description = models.TextField(
         "Footer description",
@@ -176,6 +199,7 @@ class Page(OrderedPublishableModel, SeoFieldsMixin):
     title = models.CharField("Title", max_length=255)
     title_i18n = models.JSONField("Title translations", default=dict, blank=True)
     slug = models.SlugField("Slug", max_length=160, unique=True)
+    is_active = models.BooleanField("Active", default=True)
     is_home = models.BooleanField("Home page", default=False)
     seo_title_i18n = models.JSONField("SEO title translations", default=dict, blank=True)
     seo_description_i18n = models.JSONField(
@@ -307,3 +331,42 @@ class MenuItem(OrderedPublishableModel):
 
     def __str__(self):
         return f"{self.menu.title}: {self.label}"
+
+
+class TranslationKey(TimeStampedModel):
+    key = models.CharField("Key", max_length=220, unique=True)
+    namespace = models.CharField("Namespace", max_length=80, blank=True)
+    description = models.CharField("Description", max_length=255, blank=True)
+    is_active = models.BooleanField("Active", default=True)
+
+    class Meta:
+        verbose_name = "Translation key"
+        verbose_name_plural = "Translation keys"
+        ordering = ("namespace", "key")
+
+    def __str__(self):
+        return self.key
+
+
+class Translation(TimeStampedModel):
+    language = models.ForeignKey(
+        Language, on_delete=models.CASCADE, related_name="translations"
+    )
+    key = models.ForeignKey(
+        TranslationKey, on_delete=models.CASCADE, related_name="translations"
+    )
+    text = models.TextField("Text")
+
+    class Meta:
+        verbose_name = "Translation"
+        verbose_name_plural = "Translations"
+        ordering = ("language__order", "key__key")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("language", "key"),
+                name="content_unique_language_translation_key",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.language.code}: {self.key.key}"

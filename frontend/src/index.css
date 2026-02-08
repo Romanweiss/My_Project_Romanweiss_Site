@@ -93,10 +93,35 @@ body {
   z-index: 20;
   color: var(--header-text);
   mix-blend-mode: lighten;
+  transition:
+    background-color 0.28s ease,
+    box-shadow 0.28s ease,
+    backdrop-filter 0.28s ease,
+    color 0.28s ease;
 }
 
 :root[data-theme="dark"] .site-header {
   mix-blend-mode: normal;
+}
+
+.site-header.solid {
+  mix-blend-mode: normal;
+  background: linear-gradient(
+    180deg,
+    rgba(12, 18, 23, 0.88) 0%,
+    rgba(12, 18, 23, 0.7) 100%
+  );
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 28px rgba(9, 14, 20, 0.3);
+}
+
+:root[data-theme="dark"] .site-header.solid {
+  background: linear-gradient(
+    180deg,
+    rgba(7, 11, 16, 0.9) 0%,
+    rgba(7, 11, 16, 0.76) 100%
+  );
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38);
 }
 
 .brand {
