@@ -1,6 +1,7 @@
 import type {
   CmsBootstrap,
   ContactMessagePayload,
+  Locale,
   Menu,
   Page,
   SiteSettings,
@@ -20,17 +21,22 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export const getCmsBootstrap = (signal?: AbortSignal) =>
-  requestJson<CmsBootstrap>("/bootstrap/", { signal });
+function withLang(path: string, lang: Locale): string {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}lang=${encodeURIComponent(lang)}`;
+}
 
-export const getSiteSettings = (signal?: AbortSignal) =>
-  requestJson<SiteSettings>("/site/", { signal });
+export const getCmsBootstrap = (lang: Locale, signal?: AbortSignal) =>
+  requestJson<CmsBootstrap>(withLang("/bootstrap/", lang), { signal });
 
-export const getPageBySlug = (slug: string, signal?: AbortSignal) =>
-  requestJson<Page>(`/pages/${slug}/`, { signal });
+export const getSiteSettings = (lang: Locale, signal?: AbortSignal) =>
+  requestJson<SiteSettings>(withLang("/site/", lang), { signal });
 
-export const getMenuByCode = (code: string, signal?: AbortSignal) =>
-  requestJson<Menu>(`/menus/${code}/`, { signal });
+export const getPageBySlug = (slug: string, lang: Locale, signal?: AbortSignal) =>
+  requestJson<Page>(withLang(`/pages/${slug}/`, lang), { signal });
+
+export const getMenuByCode = (code: string, lang: Locale, signal?: AbortSignal) =>
+  requestJson<Menu>(withLang(`/menus/${code}/`, lang), { signal });
 
 export const sendContactMessage = (payload: ContactMessagePayload) =>
   requestJson<{ status: string; id: number }>("/contact-messages/", {

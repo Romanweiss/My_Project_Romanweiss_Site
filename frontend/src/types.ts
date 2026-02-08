@@ -1,3 +1,30 @@
+export type Locale = "en" | "ru" | "zh";
+
+export type UiTexts = {
+  loading_content: string;
+  content_unavailable: string;
+  detail_location: string;
+  detail_email: string;
+  detail_socials: string;
+  contact_name_label: string;
+  contact_name_placeholder: string;
+  contact_email_label: string;
+  contact_email_placeholder: string;
+  contact_message_label: string;
+  contact_message_placeholder: string;
+  contact_submit: string;
+  contact_sending: string;
+  contact_success: string;
+  contact_error_default: string;
+  newsletter_placeholder: string;
+  newsletter_button: string;
+  theme_light?: string;
+  theme_dark?: string;
+  lang_en?: string;
+  lang_ru?: string;
+  lang_zh?: string;
+};
+
 export type SiteSettings = {
   id: number;
   brand_name: string;
@@ -11,6 +38,7 @@ export type SiteSettings = {
   seo_title: string;
   seo_description: string;
   seo_image: string;
+  ui: UiTexts;
   created_at: string;
   updated_at: string;
 };
@@ -77,6 +105,7 @@ export type Menu = {
 };
 
 export type CmsBootstrap = {
+  lang: Locale;
   site: SiteSettings;
   page: Page;
   menus: Menu[];

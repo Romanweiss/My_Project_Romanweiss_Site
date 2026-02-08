@@ -29,7 +29,9 @@ class SeoFieldsMixin(models.Model):
 
 class SiteSettings(TimeStampedModel, SeoFieldsMixin):
     brand_name = models.CharField("Brand name", max_length=120, default="Romanweiss")
+    brand_name_i18n = models.JSONField("Brand name translations", default=dict, blank=True)
     footer_title = models.CharField("Footer title", max_length=120, default="Romanweiss")
+    footer_title_i18n = models.JSONField("Footer title translations", default=dict, blank=True)
     footer_description = models.TextField(
         "Footer description",
         default=(
@@ -37,18 +39,34 @@ class SiteSettings(TimeStampedModel, SeoFieldsMixin):
             "and the stories found in distance."
         ),
     )
+    footer_description_i18n = models.JSONField(
+        "Footer description translations", default=dict, blank=True
+    )
     footer_explore_title = models.CharField(
         "Footer explore title", max_length=80, default="Explore"
+    )
+    footer_explore_title_i18n = models.JSONField(
+        "Footer explore title translations", default=dict, blank=True
     )
     footer_social_title = models.CharField(
         "Footer social title", max_length=80, default="Social"
     )
+    footer_social_title_i18n = models.JSONField(
+        "Footer social title translations", default=dict, blank=True
+    )
     footer_newsletter_title = models.CharField(
         "Footer newsletter title", max_length=80, default="Newsletter"
+    )
+    footer_newsletter_title_i18n = models.JSONField(
+        "Footer newsletter title translations", default=dict, blank=True
     )
     newsletter_note = models.CharField(
         "Newsletter note", max_length=200, default="Updates from the road, once a month."
     )
+    newsletter_note_i18n = models.JSONField(
+        "Newsletter note translations", default=dict, blank=True
+    )
+    ui_i18n = models.JSONField("UI translations", default=dict, blank=True)
     contact_email = models.EmailField(
         "Contact email", max_length=254, default="hello@romanweiss.com"
     )
@@ -156,8 +174,13 @@ class SocialLink(OrderedPublishableModel):
 
 class Page(OrderedPublishableModel, SeoFieldsMixin):
     title = models.CharField("Title", max_length=255)
+    title_i18n = models.JSONField("Title translations", default=dict, blank=True)
     slug = models.SlugField("Slug", max_length=160, unique=True)
     is_home = models.BooleanField("Home page", default=False)
+    seo_title_i18n = models.JSONField("SEO title translations", default=dict, blank=True)
+    seo_description_i18n = models.JSONField(
+        "SEO description translations", default=dict, blank=True
+    )
 
     class Meta:
         verbose_name = "Page"
@@ -195,9 +218,13 @@ class PageSection(OrderedPublishableModel):
     key = models.SlugField("Key", max_length=80)
     section_type = models.CharField("Section type", max_length=32, choices=TYPE_CHOICES)
     title = models.CharField("Title", max_length=255, blank=True)
+    title_i18n = models.JSONField("Title translations", default=dict, blank=True)
     subtitle = models.CharField("Subtitle", max_length=320, blank=True)
+    subtitle_i18n = models.JSONField("Subtitle translations", default=dict, blank=True)
     body = models.TextField("Body", blank=True)
+    body_i18n = models.JSONField("Body translations", default=dict, blank=True)
     payload = models.JSONField("Payload", default=dict, blank=True)
+    payload_i18n = models.JSONField("Payload translations", default=dict, blank=True)
 
     class Meta:
         verbose_name = "Page section"
@@ -242,6 +269,7 @@ class Menu(OrderedPublishableModel):
 
     code = models.SlugField("Code", max_length=50, unique=True)
     title = models.CharField("Title", max_length=120)
+    title_i18n = models.JSONField("Title translations", default=dict, blank=True)
     location = models.CharField(
         "Location",
         max_length=20,
@@ -261,6 +289,7 @@ class Menu(OrderedPublishableModel):
 class MenuItem(OrderedPublishableModel):
     menu = models.ForeignKey(Menu, on_delete=models.CASCADE, related_name="items")
     label = models.CharField("Label", max_length=120)
+    label_i18n = models.JSONField("Label translations", default=dict, blank=True)
     page = models.ForeignKey(
         Page,
         on_delete=models.SET_NULL,

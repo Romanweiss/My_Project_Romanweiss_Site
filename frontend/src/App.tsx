@@ -1,9 +1,16 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { getCmsBootstrap, sendContactMessage } from "./api";
 import "./index.css";
-import type { CmsBootstrap, ContactMessagePayload, PageSection } from "./types";
+import type {
+  CmsBootstrap,
+  ContactMessagePayload,
+  Locale,
+  PageSection,
+  UiTexts,
+} from "./types";
 
 type SubmitStatus = "idle" | "sending" | "success" | "error";
+type ThemeMode = "light" | "dark";
 
 type SectionHeadingProps = {
   eyebrow: string;
@@ -32,6 +39,100 @@ type StoryItem = {
   description?: string;
   image_url?: string;
 };
+
+const LOCALE_STORAGE_KEY = "romanweiss.locale";
+const THEME_STORAGE_KEY = "romanweiss.theme";
+
+const FALLBACK_UI: Record<Locale, UiTexts> = {
+  en: {
+    loading_content: "Loading content...",
+    content_unavailable: "Content is unavailable.",
+    detail_location: "Location",
+    detail_email: "Email",
+    detail_socials: "Socials",
+    contact_name_label: "Name",
+    contact_name_placeholder: "Your name",
+    contact_email_label: "Email",
+    contact_email_placeholder: "your@email.com",
+    contact_message_label: "Message",
+    contact_message_placeholder: "Tell me about your project...",
+    contact_submit: "Send message",
+    contact_sending: "Sending...",
+    contact_success: "Message sent. Thank you.",
+    contact_error_default: "Could not send message.",
+    newsletter_placeholder: "Email address",
+    newsletter_button: "Join",
+    theme_light: "Light",
+    theme_dark: "Dark",
+    lang_en: "EN",
+    lang_ru: "RU",
+    lang_zh: "中文",
+  },
+  ru: {
+    loading_content: "Загрузка контента...",
+    content_unavailable: "Контент недоступен.",
+    detail_location: "Локация",
+    detail_email: "Email",
+    detail_socials: "Соцсети",
+    contact_name_label: "Имя",
+    contact_name_placeholder: "Ваше имя",
+    contact_email_label: "Email",
+    contact_email_placeholder: "your@email.com",
+    contact_message_label: "Сообщение",
+    contact_message_placeholder: "Расскажите о вашем проекте...",
+    contact_submit: "Отправить",
+    contact_sending: "Отправка...",
+    contact_success: "Сообщение отправлено. Спасибо.",
+    contact_error_default: "Не удалось отправить сообщение.",
+    newsletter_placeholder: "Email адрес",
+    newsletter_button: "Подписаться",
+    theme_light: "Светлая",
+    theme_dark: "Тёмная",
+    lang_en: "EN",
+    lang_ru: "RU",
+    lang_zh: "中文",
+  },
+  zh: {
+    loading_content: "正在加载内容...",
+    content_unavailable: "内容不可用。",
+    detail_location: "地点",
+    detail_email: "邮箱",
+    detail_socials: "社交",
+    contact_name_label: "姓名",
+    contact_name_placeholder: "你的姓名",
+    contact_email_label: "邮箱",
+    contact_email_placeholder: "your@email.com",
+    contact_message_label: "留言",
+    contact_message_placeholder: "请介绍一下你的项目...",
+    contact_submit: "发送消息",
+    contact_sending: "发送中...",
+    contact_success: "消息已发送。谢谢。",
+    contact_error_default: "发送失败。",
+    newsletter_placeholder: "邮箱地址",
+    newsletter_button: "订阅",
+    theme_light: "浅色",
+    theme_dark: "深色",
+    lang_en: "EN",
+    lang_ru: "RU",
+    lang_zh: "中文",
+  },
+};
+
+function getInitialLocale(): Locale {
+  if (typeof window === "undefined") {
+    return "en";
+  }
+  const stored = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+  return stored === "ru" || stored === "zh" || stored === "en" ? stored : "en";
+}
+
+function getInitialTheme(): ThemeMode {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+  return stored === "dark" || stored === "light" ? stored : "light";
+}
 
 function SectionHeading({
   eyebrow,
@@ -77,6 +178,8 @@ function payloadItems<T>(section: PageSection | undefined, key: string): T[] {
 }
 
 export default function App() {
+  const [language, setLanguage] = useState<Locale>(getInitialLocale);
+  const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
   const [cms, setCms] = useState<CmsBootstrap | null>(null);
   const [loadError, setLoadError] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -88,19 +191,43 @@ export default function App() {
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>("idle");
   const [submitMessage, setSubmitMessage] = useState<string>("");
 
+  const fallbackUi = FALLBACK_UI[language];
+  const ui = cms?.site.ui ?? fallbackUi;
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    document.documentElement.lang = language;
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, language);
+  }, [language]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
   useEffect(() => {
     const controller = new AbortController();
+    setIsLoading(true);
+    setLoadError("");
 
     async function fetchContent() {
       try {
-        const bootstrap = await getCmsBootstrap(controller.signal);
+        const bootstrap = await getCmsBootstrap(language, controller.signal);
         setCms(bootstrap);
-        setLoadError("");
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
         }
-        setLoadError("Could not load content from Django API.");
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : FALLBACK_UI[language].content_unavailable
+        );
       } finally {
         setIsLoading(false);
       }
@@ -111,7 +238,7 @@ export default function App() {
     return () => {
       controller.abort();
     };
-  }, []);
+  }, [language]);
 
   const handleContactSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -121,12 +248,14 @@ export default function App() {
     try {
       await sendContactMessage(contactForm);
       setSubmitStatus("success");
-      setSubmitMessage("Message sent. Thank you.");
+      setSubmitMessage(ui.contact_success || fallbackUi.contact_success);
       setContactForm({ name: "", email: "", message: "" });
     } catch (error) {
       setSubmitStatus("error");
       setSubmitMessage(
-        error instanceof Error ? error.message : "Could not send message."
+        error instanceof Error
+          ? error.message
+          : ui.contact_error_default || fallbackUi.contact_error_default
       );
     }
   };
@@ -147,11 +276,17 @@ export default function App() {
     return map;
   }, [cms]);
 
+  const languageLabels: Record<Locale, string> = {
+    en: ui.lang_en || "EN",
+    ru: ui.lang_ru || "RU",
+    zh: ui.lang_zh || "中文",
+  };
+
   if (!cms) {
     return (
       <div className="page">
         <section className="journal-intro">
-          <p>{isLoading ? "Loading content..." : "Content is unavailable."}</p>
+          <p>{isLoading ? ui.loading_content : ui.content_unavailable}</p>
           {loadError ? <small className="load-warning">{loadError}</small> : null}
         </section>
       </div>
@@ -196,6 +331,29 @@ export default function App() {
             </a>
           ))}
         </nav>
+        <div className="controls">
+          <div className="lang-switch" role="group" aria-label="Language switch">
+            {(["en", "ru", "zh"] as Locale[]).map((code) => (
+              <button
+                key={code}
+                type="button"
+                className={language === code ? "active" : ""}
+                onClick={() => setLanguage(code)}
+              >
+                {languageLabels[code]}
+              </button>
+            ))}
+          </div>
+          <button
+            className="theme-switch"
+            type="button"
+            onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+          >
+            {theme === "light"
+              ? ui.theme_dark || fallbackUi.theme_dark
+              : ui.theme_light || fallbackUi.theme_light}
+          </button>
+        </div>
       </header>
 
       {heroSection ? (
@@ -211,7 +369,7 @@ export default function App() {
             <p className="hero-subtitle">{heroSection.subtitle}</p>
             <div className="hero-scroll">
               {isLoading
-                ? "Loading..."
+                ? ui.loading_content
                 : payloadText(heroSection, "scroll_label", "Scroll to begin")}
             </div>
           </div>
@@ -324,25 +482,25 @@ export default function App() {
               <p>{contactSection.body}</p>
               <div className="contact-details">
                 <div>
-                  <p className="detail-label">Location</p>
+                  <p className="detail-label">{ui.detail_location}</p>
                   <p>{payloadText(contactSection, "location", "-")}</p>
                 </div>
                 <div>
-                  <p className="detail-label">Email</p>
+                  <p className="detail-label">{ui.detail_email}</p>
                   <p>{payloadText(contactSection, "email", settings.contact_email)}</p>
                 </div>
                 <div>
-                  <p className="detail-label">Socials</p>
+                  <p className="detail-label">{ui.detail_socials}</p>
                   <p>{contactSocials || "-"}</p>
                 </div>
               </div>
             </div>
             <form className="contact-form" onSubmit={handleContactSubmit}>
               <label>
-                Name
+                {ui.contact_name_label}
                 <input
                   type="text"
-                  placeholder="Your name"
+                  placeholder={ui.contact_name_placeholder}
                   value={contactForm.name}
                   onChange={(event) =>
                     setContactForm((prev) => ({ ...prev, name: event.target.value }))
@@ -351,10 +509,10 @@ export default function App() {
                 />
               </label>
               <label>
-                Email
+                {ui.contact_email_label}
                 <input
                   type="email"
-                  placeholder="your@email.com"
+                  placeholder={ui.contact_email_placeholder}
                   value={contactForm.email}
                   onChange={(event) =>
                     setContactForm((prev) => ({ ...prev, email: event.target.value }))
@@ -363,9 +521,9 @@ export default function App() {
                 />
               </label>
               <label>
-                Message
+                {ui.contact_message_label}
                 <textarea
-                  placeholder="Tell me about your project..."
+                  placeholder={ui.contact_message_placeholder}
                   rows={4}
                   value={contactForm.message}
                   onChange={(event) =>
@@ -378,7 +536,7 @@ export default function App() {
                 />
               </label>
               <button type="submit" disabled={submitStatus === "sending"}>
-                {submitStatus === "sending" ? "Sending..." : "Send message"}
+                {submitStatus === "sending" ? ui.contact_sending : ui.contact_submit}
               </button>
               {submitMessage ? (
                 <small
@@ -434,8 +592,8 @@ export default function App() {
             <p className="detail-label">{settings.footer_newsletter_title}</p>
             <p>{settings.newsletter_note}</p>
             <div className="newsletter">
-              <input type="email" placeholder="Email address" />
-              <button type="button">Join</button>
+              <input type="email" placeholder={ui.newsletter_placeholder} />
+              <button type="button">{ui.newsletter_button}</button>
             </div>
           </div>
         </div>

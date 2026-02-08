@@ -38,6 +38,21 @@ class SiteSettingsAdmin(admin.ModelAdmin):
             },
         ),
         (
+            "Translations",
+            {
+                "fields": (
+                    "brand_name_i18n",
+                    "footer_title_i18n",
+                    "footer_description_i18n",
+                    "footer_explore_title_i18n",
+                    "footer_social_title_i18n",
+                    "footer_newsletter_title_i18n",
+                    "newsletter_note_i18n",
+                    "ui_i18n",
+                )
+            },
+        ),
+        (
             "SEO defaults",
             {"fields": ("seo_title", "seo_description", "seo_image")},
         ),
@@ -88,9 +103,13 @@ class PageSectionInline(admin.StackedInline):
         "key",
         "section_type",
         "title",
+        "title_i18n",
         "subtitle",
+        "subtitle_i18n",
         "body",
+        "body_i18n",
         "payload",
+        "payload_i18n",
         "order",
         "is_published",
     )
@@ -102,6 +121,7 @@ class MenuItemInline(admin.TabularInline):
     extra = 0
     fields = (
         "label",
+        "label_i18n",
         "page",
         "href",
         "open_in_new_tab",
@@ -120,6 +140,25 @@ class PageAdmin(admin.ModelAdmin):
     prepopulated_fields = {"slug": ("title",)}
     readonly_fields = ("created_at", "updated_at")
     inlines = (PageSectionInline,)
+    fieldsets = (
+        (
+            "Core",
+            {"fields": ("title", "title_i18n", "slug", "is_home", "order", "is_published")},
+        ),
+        (
+            "SEO",
+            {
+                "fields": (
+                    "seo_title",
+                    "seo_title_i18n",
+                    "seo_description",
+                    "seo_description_i18n",
+                    "seo_image",
+                )
+            },
+        ),
+        ("System", {"fields": ("created_at", "updated_at")}),
+    )
 
 
 @admin.register(PageSection)
@@ -138,6 +177,29 @@ class PageSectionAdmin(admin.ModelAdmin):
     ordering = ("page_id", "order", "id")
     readonly_fields = ("created_at", "updated_at")
     inlines = (SectionImageInline,)
+    fieldsets = (
+        (
+            "Core",
+            {
+                "fields": (
+                    "page",
+                    "key",
+                    "section_type",
+                    "title",
+                    "subtitle",
+                    "body",
+                    "payload",
+                    "order",
+                    "is_published",
+                )
+            },
+        ),
+        (
+            "Translations",
+            {"fields": ("title_i18n", "subtitle_i18n", "body_i18n", "payload_i18n")},
+        ),
+        ("System", {"fields": ("created_at", "updated_at")}),
+    )
 
 
 @admin.register(Menu)
@@ -150,6 +212,22 @@ class MenuAdmin(admin.ModelAdmin):
     prepopulated_fields = {"code": ("title",)}
     readonly_fields = ("created_at", "updated_at")
     inlines = (MenuItemInline,)
+    fieldsets = (
+        (
+            "Core",
+            {
+                "fields": (
+                    "title",
+                    "title_i18n",
+                    "code",
+                    "location",
+                    "order",
+                    "is_published",
+                )
+            },
+        ),
+        ("System", {"fields": ("created_at", "updated_at")}),
+    )
 
 
 @admin.register(MenuItem)
@@ -168,6 +246,24 @@ class MenuItemAdmin(admin.ModelAdmin):
     search_fields = ("label", "href", "menu__title")
     ordering = ("menu_id", "order", "id")
     readonly_fields = ("created_at", "updated_at")
+    fieldsets = (
+        (
+            "Core",
+            {
+                "fields": (
+                    "menu",
+                    "label",
+                    "label_i18n",
+                    "page",
+                    "href",
+                    "open_in_new_tab",
+                    "order",
+                    "is_published",
+                )
+            },
+        ),
+        ("System", {"fields": ("created_at", "updated_at")}),
+    )
 
 
 @admin.register(Category)

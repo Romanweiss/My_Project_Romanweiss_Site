@@ -40,8 +40,14 @@ def _get_home_page():
     return queryset.filter(is_home=True).first() or queryset.first()
 
 
+def _request_lang(request):
+    raw = str(request.query_params.get("lang", "")).strip().lower()
+    return raw if raw in {"en", "ru", "zh"} else "en"
+
+
 class SiteBootstrapView(APIView):
     def get(self, request):
+        lang = _request_lang(request)
         site_settings = _get_or_create_site_settings()
         page = _get_home_page()
         if page is None:
@@ -58,9 +64,14 @@ class SiteBootstrapView(APIView):
 
         return Response(
             {
-                "site": SiteSettingsSerializer(site_settings).data,
-                "page": PageSerializer(page).data,
-                "menus": MenuSerializer(menus, many=True).data,
+                "lang": lang,
+                "site": SiteSettingsSerializer(
+                    site_settings, context={"request": request}
+                ).data,
+                "page": PageSerializer(page, context={"request": request}).data,
+                "menus": MenuSerializer(
+                    menus, many=True, context={"request": request}
+                ).data,
             }
         )
 
@@ -68,7 +79,7 @@ class SiteBootstrapView(APIView):
 class SiteSettingsDetailView(APIView):
     def get(self, request):
         instance = _get_or_create_site_settings()
-        return Response(SiteSettingsSerializer(instance).data)
+        return Response(SiteSettingsSerializer(instance, context={"request": request}).data)
 
 
 class MenuDetailView(APIView):
@@ -83,7 +94,7 @@ class MenuDetailView(APIView):
                 {"detail": "Menu not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        return Response(MenuSerializer(menu).data)
+        return Response(MenuSerializer(menu, context={"request": request}).data)
 
 
 class PageViewSet(viewsets.ReadOnlyModelViewSet):
