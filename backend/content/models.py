@@ -1,0 +1,280 @@
+from django.db import models
+from django.db.models import Q
+
+
+class TimeStampedModel(models.Model):
+    created_at = models.DateTimeField("Created at", auto_now_add=True)
+    updated_at = models.DateTimeField("Updated at", auto_now=True)
+
+    class Meta:
+        abstract = True
+
+
+class OrderedPublishableModel(TimeStampedModel):
+    order = models.PositiveIntegerField("Order", default=0)
+    is_published = models.BooleanField("Published", default=True)
+
+    class Meta:
+        abstract = True
+
+
+class SeoFieldsMixin(models.Model):
+    seo_title = models.CharField("SEO title", max_length=255, blank=True)
+    seo_description = models.CharField("SEO description", max_length=320, blank=True)
+    seo_image = models.URLField("SEO image URL", max_length=500, blank=True)
+
+    class Meta:
+        abstract = True
+
+
+class SiteSettings(TimeStampedModel, SeoFieldsMixin):
+    brand_name = models.CharField("Brand name", max_length=120, default="Romanweiss")
+    footer_title = models.CharField("Footer title", max_length=120, default="Romanweiss")
+    footer_description = models.TextField(
+        "Footer description",
+        default=(
+            "Capturing the silence of remote places, the texture of the wind, "
+            "and the stories found in distance."
+        ),
+    )
+    footer_explore_title = models.CharField(
+        "Footer explore title", max_length=80, default="Explore"
+    )
+    footer_social_title = models.CharField(
+        "Footer social title", max_length=80, default="Social"
+    )
+    footer_newsletter_title = models.CharField(
+        "Footer newsletter title", max_length=80, default="Newsletter"
+    )
+    newsletter_note = models.CharField(
+        "Newsletter note", max_length=200, default="Updates from the road, once a month."
+    )
+    contact_email = models.EmailField(
+        "Contact email", max_length=254, default="hello@romanweiss.com"
+    )
+
+    class Meta:
+        verbose_name = "Site settings"
+        verbose_name_plural = "Site settings"
+
+    def __str__(self):
+        return self.brand_name
+
+
+class Category(OrderedPublishableModel):
+    SIZE_LARGE = "large"
+    SIZE_SMALL = "small"
+    SIZE_WIDE = "wide"
+    SIZE_CHOICES = (
+        (SIZE_LARGE, "Large"),
+        (SIZE_SMALL, "Small"),
+        (SIZE_WIDE, "Wide"),
+    )
+
+    title = models.CharField("Title", max_length=120)
+    slug = models.SlugField("Slug", max_length=140, unique=True)
+    image_url = models.URLField("Image URL", max_length=500)
+    size = models.CharField("Size", max_length=10, choices=SIZE_CHOICES, default=SIZE_SMALL)
+
+    class Meta:
+        verbose_name = "Category"
+        verbose_name_plural = "Categories"
+        ordering = ("order", "id")
+
+    def __str__(self):
+        return self.title
+
+
+class Expedition(OrderedPublishableModel):
+    title = models.CharField("Title", max_length=150)
+    slug = models.SlugField("Slug", max_length=170, unique=True)
+    date_label = models.CharField("Date label", max_length=80)
+    description = models.TextField("Description")
+    image_url = models.URLField("Image URL", max_length=500)
+
+    class Meta:
+        verbose_name = "Expedition"
+        verbose_name_plural = "Expeditions"
+        ordering = ("order", "id")
+
+    def __str__(self):
+        return self.title
+
+
+class Story(OrderedPublishableModel):
+    title = models.CharField("Title", max_length=150)
+    slug = models.SlugField("Slug", max_length=170, unique=True)
+    date_label = models.CharField("Date label", max_length=80)
+    description = models.TextField("Description")
+    image_url = models.URLField("Image URL", max_length=500)
+
+    class Meta:
+        verbose_name = "Story"
+        verbose_name_plural = "Stories"
+        ordering = ("order", "id")
+
+    def __str__(self):
+        return self.title
+
+
+class NavigationItem(OrderedPublishableModel):
+    SECTION_HEADER = "header"
+    SECTION_FOOTER = "footer"
+    SECTION_CHOICES = (
+        (SECTION_HEADER, "Header"),
+        (SECTION_FOOTER, "Footer"),
+    )
+
+    section = models.CharField("Section", max_length=20, choices=SECTION_CHOICES)
+    title = models.CharField("Title", max_length=80)
+    slug = models.SlugField("Slug", max_length=100, unique=True)
+    href = models.CharField("Href", max_length=200)
+
+    class Meta:
+        verbose_name = "Navigation item"
+        verbose_name_plural = "Navigation items"
+        ordering = ("section", "order", "id")
+
+    def __str__(self):
+        return f"{self.get_section_display()}: {self.title}"
+
+
+class SocialLink(OrderedPublishableModel):
+    title = models.CharField("Title", max_length=80)
+    slug = models.SlugField("Slug", max_length=100, unique=True)
+    short_label = models.CharField("Short label", max_length=12)
+    url = models.CharField("URL", max_length=300, blank=True)
+
+    class Meta:
+        verbose_name = "Social link"
+        verbose_name_plural = "Social links"
+        ordering = ("order", "id")
+
+    def __str__(self):
+        return self.title
+
+
+class Page(OrderedPublishableModel, SeoFieldsMixin):
+    title = models.CharField("Title", max_length=255)
+    slug = models.SlugField("Slug", max_length=160, unique=True)
+    is_home = models.BooleanField("Home page", default=False)
+
+    class Meta:
+        verbose_name = "Page"
+        verbose_name_plural = "Pages"
+        ordering = ("order", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("is_home",),
+                condition=Q(is_home=True),
+                name="content_single_home_page",
+            ),
+        ]
+
+    def __str__(self):
+        return self.title
+
+
+class PageSection(OrderedPublishableModel):
+    TYPE_HERO = "hero"
+    TYPE_RICH_TEXT = "rich_text"
+    TYPE_CARDS = "cards"
+    TYPE_GALLERY = "gallery"
+    TYPE_STORIES = "stories"
+    TYPE_CONTACT = "contact"
+    TYPE_CHOICES = (
+        (TYPE_HERO, "Hero"),
+        (TYPE_RICH_TEXT, "Rich text"),
+        (TYPE_CARDS, "Cards"),
+        (TYPE_GALLERY, "Gallery"),
+        (TYPE_STORIES, "Stories"),
+        (TYPE_CONTACT, "Contact"),
+    )
+
+    page = models.ForeignKey(Page, on_delete=models.CASCADE, related_name="sections")
+    key = models.SlugField("Key", max_length=80)
+    section_type = models.CharField("Section type", max_length=32, choices=TYPE_CHOICES)
+    title = models.CharField("Title", max_length=255, blank=True)
+    subtitle = models.CharField("Subtitle", max_length=320, blank=True)
+    body = models.TextField("Body", blank=True)
+    payload = models.JSONField("Payload", default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "Page section"
+        verbose_name_plural = "Page sections"
+        ordering = ("page_id", "order", "id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=("page", "key"), name="content_unique_page_section_key"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.page.title}: {self.key}"
+
+
+class SectionImage(OrderedPublishableModel):
+    section = models.ForeignKey(
+        PageSection, on_delete=models.CASCADE, related_name="images"
+    )
+    image_url = models.URLField("Image URL", max_length=500)
+    alt_text = models.CharField("Alt text", max_length=255, blank=True)
+    caption = models.CharField("Caption", max_length=255, blank=True)
+
+    class Meta:
+        verbose_name = "Section image"
+        verbose_name_plural = "Section images"
+        ordering = ("section_id", "order", "id")
+
+    def __str__(self):
+        return self.alt_text or self.image_url
+
+
+class Menu(OrderedPublishableModel):
+    LOCATION_MAIN = "main"
+    LOCATION_FOOTER = "footer"
+    LOCATION_SOCIAL = "social"
+    LOCATION_CHOICES = (
+        (LOCATION_MAIN, "Main"),
+        (LOCATION_FOOTER, "Footer"),
+        (LOCATION_SOCIAL, "Social"),
+    )
+
+    code = models.SlugField("Code", max_length=50, unique=True)
+    title = models.CharField("Title", max_length=120)
+    location = models.CharField(
+        "Location",
+        max_length=20,
+        choices=LOCATION_CHOICES,
+        default=LOCATION_MAIN,
+    )
+
+    class Meta:
+        verbose_name = "Menu"
+        verbose_name_plural = "Menus"
+        ordering = ("order", "id")
+
+    def __str__(self):
+        return self.title
+
+
+class MenuItem(OrderedPublishableModel):
+    menu = models.ForeignKey(Menu, on_delete=models.CASCADE, related_name="items")
+    label = models.CharField("Label", max_length=120)
+    page = models.ForeignKey(
+        Page,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="menu_items",
+    )
+    href = models.CharField("Href", max_length=255, blank=True)
+    open_in_new_tab = models.BooleanField("Open in new tab", default=False)
+
+    class Meta:
+        verbose_name = "Menu item"
+        verbose_name_plural = "Menu items"
+        ordering = ("menu_id", "order", "id")
+
+    def __str__(self):
+        return f"{self.menu.title}: {self.label}"
