@@ -15,7 +15,7 @@
         <a href="{{ item.href }}"{% if item.open_in_new_tab %} target="_blank" rel="noreferrer"{% endif %}>{{ item.label }}</a>
       {% endfor %}
     </nav>
-    <nav class="lang-nav" aria-label="language switcher">
+    <nav class="lang-nav" aria-label="{{ ui.lang_switcher }}">
       {% for item in language_switches %}
         <a href="{{ item.url }}" class="{% if item.is_active %}active{% endif %}">{{ item.label }}</a>
       {% endfor %}

@@ -1,0 +1,24 @@
+{% extends "content/base.html" %}
+
+{% block content %}
+  <section class="section expeditions-index">
+    <header class="section-head">
+      <div>
+        <p class="eyebrow">{{ index_subtitle }}</p>
+        <h1>{{ index_title }}</h1>
+      </div>
+    </header>
+    <div class="grid expedition-grid">
+      {% for expedition in expeditions %}
+        <a href="{{ expedition.detail_url }}" class="card expedition-card-link" aria-label="{{ ui.expeditions_index_cta }}: {{ expedition.title }}">
+          <div class="expedition-card-media-wrap">
+            <img src="{{ expedition.cover_url }}" alt="{{ expedition.title }}" class="expedition-card-media" />
+          </div>
+          <p class="meta">{{ expedition.date_label }}</p>
+          <h2>{{ expedition.title }}</h2>
+          <p>{{ expedition.subtitle }}</p>
+        </a>
+      {% endfor %}
+    </div>
+  </section>
+{% endblock %}

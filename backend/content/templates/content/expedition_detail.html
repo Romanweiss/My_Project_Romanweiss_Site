@@ -1,0 +1,162 @@
+{% extends "content/base.html" %}
+
+{% block content %}
+  <article class="section expedition-detail">
+    <a href="{{ expeditions_index_url }}" class="back-link">{{ ui.expedition_detail_back }}</a>
+    <header class="expedition-header">
+      <p class="meta">{{ expedition.date_label }}</p>
+      <h1>{{ expedition.title }}</h1>
+      <p class="expedition-lead">{{ expedition.description }}</p>
+    </header>
+
+    <section class="expedition-media-section">
+      <h2>{{ ui.expedition_detail_media_title }}</h2>
+      <div class="expedition-media-grid">
+        {% for block in media_blocks %}
+          {% if block.kind == "image" %}
+            <button
+              type="button"
+              class="expedition-media-card image-card"
+              data-lightbox-index="{{ block.lightbox_index }}"
+              aria-label="{{ ui.lightbox_open_image }}: {{ block.alt_text }}"
+            >
+              <img src="{{ block.image_url }}" alt="{{ block.alt_text }}" />
+              {% if block.title %}<span class="media-caption">{{ block.title }}</span>{% endif %}
+            </button>
+          {% elif block.kind == "video" %}
+            <div class="expedition-media-card video-card">
+              <div class="video-frame">
+                {% if block.video_url %}
+                  <video controls preload="metadata" src="{{ block.video_url }}"></video>
+                {% else %}
+                  <div class="video-placeholder">
+                    <span>{{ block.placeholder }}</span>
+                  </div>
+                {% endif %}
+              </div>
+              {% if block.title %}<span class="media-caption">{{ block.title }}</span>{% endif %}
+            </div>
+          {% else %}
+            <article class="expedition-media-card story-card">
+              <h3>{{ block.title }}</h3>
+              <p>{{ block.body }}</p>
+            </article>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </section>
+  </article>
+
+  <div class="lightbox" hidden aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="lightbox-backdrop" data-lightbox-close="true"></div>
+    <div class="lightbox-panel">
+      <button type="button" class="lightbox-close" data-lightbox-close="true" aria-label="{{ ui.lightbox_close }}">{{ ui.lightbox_close }}</button>
+      <button type="button" class="lightbox-nav prev" data-lightbox-prev="true" aria-label="{{ ui.lightbox_prev }}">{{ ui.lightbox_prev }}</button>
+      <figure class="lightbox-figure">
+        <img src="" alt="" class="lightbox-image" />
+      </figure>
+      <button type="button" class="lightbox-nav next" data-lightbox-next="true" aria-label="{{ ui.lightbox_next }}">{{ ui.lightbox_next }}</button>
+    </div>
+  </div>
+
+  {{ lightbox_images|json_script:"lightbox-images" }}
+  <script>
+    (function () {
+      const dataNode = document.getElementById("lightbox-images");
+      if (!dataNode) return;
+      let images = [];
+      try {
+        images = JSON.parse(dataNode.textContent || "[]");
+      } catch (error) {
+        images = [];
+      }
+      if (!images.length) return;
+
+      const lightbox = document.querySelector(".lightbox");
+      const imageNode = lightbox ? lightbox.querySelector(".lightbox-image") : null;
+      const closeButton = lightbox ? lightbox.querySelector(".lightbox-close") : null;
+      const openButtons = document.querySelectorAll("[data-lightbox-index]");
+      const closeTargets = document.querySelectorAll("[data-lightbox-close]");
+      const prevButton = document.querySelector("[data-lightbox-prev]");
+      const nextButton = document.querySelector("[data-lightbox-next]");
+      if (!lightbox || !imageNode || !closeButton) return;
+
+      let currentIndex = 0;
+      let touchStartX = 0;
+      let touchStartY = 0;
+
+      const updateImage = () => {
+        const image = images[currentIndex];
+        if (!image) return;
+        imageNode.src = image.src || "";
+        imageNode.alt = image.alt || "";
+      };
+
+      const openLightbox = (index) => {
+        currentIndex = Number(index) || 0;
+        updateImage();
+        lightbox.hidden = false;
+        lightbox.setAttribute("aria-hidden", "false");
+        document.body.style.overflow = "hidden";
+        closeButton.focus();
+      };
+
+      const closeLightbox = () => {
+        lightbox.hidden = true;
+        lightbox.setAttribute("aria-hidden", "true");
+        document.body.style.overflow = "";
+      };
+
+      const showNext = () => {
+        currentIndex = (currentIndex + 1) % images.length;
+        updateImage();
+      };
+
+      const showPrev = () => {
+        currentIndex = (currentIndex - 1 + images.length) % images.length;
+        updateImage();
+      };
+
+      openButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          openLightbox(button.getAttribute("data-lightbox-index"));
+        });
+      });
+
+      closeTargets.forEach((target) => {
+        target.addEventListener("click", closeLightbox);
+      });
+
+      if (prevButton) prevButton.addEventListener("click", showPrev);
+      if (nextButton) nextButton.addEventListener("click", showNext);
+
+      document.addEventListener("keydown", (event) => {
+        if (lightbox.hidden) return;
+        if (event.key === "Escape") {
+          closeLightbox();
+        } else if (event.key === "ArrowRight") {
+          showNext();
+        } else if (event.key === "ArrowLeft") {
+          showPrev();
+        }
+      });
+
+      lightbox.addEventListener("touchstart", (event) => {
+        const touch = event.changedTouches && event.changedTouches[0];
+        if (!touch) return;
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+      }, { passive: true });
+
+      lightbox.addEventListener("touchend", (event) => {
+        const touch = event.changedTouches && event.changedTouches[0];
+        if (!touch) return;
+        const diffX = touch.clientX - touchStartX;
+        const diffY = touch.clientY - touchStartY;
+        if (Math.abs(diffX) < 50 || Math.abs(diffX) < Math.abs(diffY)) return;
+        if (diffX < 0) showNext();
+        if (diffX > 0) showPrev();
+      }, { passive: true });
+    })();
+  </script>
+{% endblock %}

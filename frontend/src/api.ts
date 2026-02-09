@@ -1,6 +1,7 @@
 import type {
   ContactMessagePayload,
   ContentResponse,
+  ExpeditionData,
   Locale,
   NavigationResponse,
   PageResponse,
@@ -68,6 +69,10 @@ export async function getPageBySlug(
   return requestJson<PageResponse>(
     buildApiUrl(`/pages/${encodeURIComponent(slug)}/`, { lang })
   );
+}
+
+export async function getExpeditions(lang: Locale): Promise<ExpeditionData[]> {
+  return requestJson<ExpeditionData[]>(buildApiUrl("/expeditions/", { lang }));
 }
 
 export async function sendContactMessage(

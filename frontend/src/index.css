@@ -259,11 +259,68 @@ body {
 }
 
 .hero-scroll {
-  margin-top: 80px;
+  margin-top: 72px;
   font-size: 0.7rem;
   letter-spacing: 0.3em;
   text-transform: uppercase;
   opacity: 0.7;
+}
+
+.hero-scroll-wrap {
+  display: grid;
+  justify-items: center;
+}
+
+.hero-scroll-arrow {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.hero-scroll-arrow span {
+  display: block;
+  width: 2px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+  animation: scroll-segment 1.8s ease-in-out infinite;
+}
+
+.hero-scroll-arrow span:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.hero-scroll-arrow span:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+.hero-scroll-arrow span:nth-child(4) {
+  animation-delay: 0.3s;
+}
+
+.hero-scroll-arrow span:nth-child(5) {
+  animation-delay: 0.4s;
+}
+
+.hero-scroll-arrow span:nth-child(6) {
+  animation-delay: 0.5s;
+}
+
+.hero-scroll-arrow span:nth-child(7) {
+  animation-delay: 0.6s;
+}
+
+@keyframes scroll-segment {
+  0%,
+  100% {
+    opacity: 0.4;
+    background: rgba(255, 255, 255, 0.25);
+  }
+  45% {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.92);
+  }
 }
 
 .journal-intro {
@@ -327,6 +384,15 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.2em;
   color: var(--button-text);
+  cursor: pointer;
+  transition: background-color 240ms ease, box-shadow 240ms ease, border-color 240ms ease;
+}
+
+.ghost-button:hover,
+.ghost-button:focus-visible {
+  background: color-mix(in srgb, var(--surface) 82%, var(--accent) 18%);
+  border-color: color-mix(in srgb, var(--button-border) 55%, var(--accent) 45%);
+  box-shadow: 0 14px 26px rgba(20, 25, 28, 0.12);
 }
 
 .interactive-card {
@@ -351,6 +417,7 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  transition: transform 300ms ease, box-shadow 300ms ease, filter 300ms ease;
 }
 
 .expedition-image {
@@ -395,6 +462,15 @@ body {
   margin: 0;
   color: var(--text-muted);
   line-height: 1.6;
+}
+
+.expedition-card:hover,
+.expedition-card:focus-visible {
+  transform: translateY(-4px);
+  box-shadow:
+    0 30px 55px rgba(20, 25, 28, 0.16),
+    0 10px 22px rgba(32, 49, 63, 0.14);
+  filter: brightness(1.01);
 }
 
 .category-grid {
@@ -525,7 +601,177 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.2em;
   color: var(--button-text);
+  cursor: pointer;
 }
+
+.expeditions-index .section-heading {
+  margin-bottom: 36px;
+}
+
+.expedition-card-index {
+  min-height: 100%;
+}
+
+.expedition-detail {
+  padding-top: 120px;
+}
+
+.expedition-back {
+  margin-bottom: 18px;
+}
+
+.expedition-detail-header h2 {
+  margin-top: 0;
+}
+
+.expedition-detail-lead {
+  max-width: 64ch;
+  line-height: 1.75;
+}
+
+.expedition-detail-grid {
+  margin-top: 30px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 24px;
+}
+
+.expedition-media-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--surface-soft);
+  box-shadow: var(--card-shadow);
+}
+
+.expedition-media-card.image {
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: zoom-in;
+  transition: transform 260ms ease, box-shadow 260ms ease;
+}
+
+.expedition-media-card.image:hover,
+.expedition-media-card.image:focus-visible {
+  transform: translateY(-3px);
+  box-shadow: 0 26px 48px rgba(18, 24, 29, 0.2);
+}
+
+.expedition-media-card.image img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  display: block;
+  object-fit: cover;
+}
+
+.expedition-media-card h4 {
+  margin: 0;
+  padding: 12px 14px;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.expedition-media-card.video {
+  display: grid;
+}
+
+.expedition-media-card video,
+.video-placeholder {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, rgba(54, 64, 71, 0.22), rgba(13, 18, 24, 0.42));
+  color: var(--header-text);
+}
+
+.video-placeholder span {
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+}
+
+.expedition-rich-story {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px 22px 24px;
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+  align-self: stretch;
+}
+
+.expedition-rich-story h3 {
+  margin: 0 0 10px;
+  font-family: "Playfair Display", serif;
+  font-size: 1.45rem;
+}
+
+.expedition-rich-story p {
+  margin: 0;
+  max-width: 68ch;
+  font-size: 1.02rem;
+  line-height: 1.9;
+  color: var(--text-muted);
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+}
+
+.lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 11, 14, 0.84);
+  border: none;
+}
+
+.lightbox-panel {
+  position: relative;
+  z-index: 2;
+  width: min(1180px, 100vw);
+  height: 100%;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+}
+
+.lightbox-close,
+.lightbox-nav {
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: #f4f7fa;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 10px 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.65rem;
+  cursor: pointer;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+}
+
+.lightbox-figure {
+  margin: 0;
+}
+
+.lightbox-image {
+  width: 100%;
+  max-height: 88vh;
+  object-fit: contain;
+}
+
 
 .contact {
   background: var(--bg-contact);
@@ -709,6 +955,17 @@ body {
   .category-card.small {
     grid-column: span 2;
   }
+
+  .lightbox-panel {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    align-content: center;
+    padding-top: 70px;
+  }
+
+  .lightbox-nav {
+    width: fit-content;
+  }
 }
 
 @media (max-width: 600px) {
@@ -745,5 +1002,16 @@ body {
     transition: none;
     transform: none !important;
     will-change: auto;
+  }
+
+  .hero-scroll-arrow span {
+    animation: none;
+    background: rgba(255, 255, 255, 0.75);
+  }
+
+  .expedition-card,
+  .expedition-media-card.image {
+    transition: none;
+    transform: none !important;
   }
 }

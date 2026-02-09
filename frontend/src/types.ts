@@ -108,3 +108,31 @@ export type PageResponse = {
   lang: Locale;
   page: PageData;
 };
+
+export type ExpeditionMediaItem = {
+  id: number;
+  kind: "image" | "video" | "story";
+  title: string;
+  body: string;
+  media_url: string;
+  video_url: string;
+  alt_text: string;
+  order: number;
+  is_published: boolean;
+};
+
+export type ExpeditionData = {
+  id: number;
+  title: string;
+  slug: string;
+  subtitle: string;
+  date_label: string;
+  description: string;
+  image_url: string;
+  cover_url: string;
+  media_items: ExpeditionMediaItem[];
+  order: number;
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
+};

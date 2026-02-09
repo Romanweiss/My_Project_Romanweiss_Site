@@ -3,6 +3,7 @@ from copy import deepcopy
 from django import forms
 from django.conf import settings
 from django.contrib import messages
+from django.http import Http404
 from django.shortcuts import redirect
 from django.templatetags.static import static
 from django.urls import reverse
@@ -15,6 +16,7 @@ from api.models import ContactMessage
 from .models import (
     Category,
     Expedition,
+    ExpeditionMedia,
     HeroSection,
     Language,
     NavigationItem,
@@ -159,10 +161,14 @@ def _navigation_label_key(item) -> str:
 def _navigation_href(item) -> str:
     if item.external_url:
         return item.external_url
+
     if item.page:
         if item.page.is_home:
             return reverse("content:home")
+        if item.page.slug == "expeditions":
+            return reverse("content:expeditions-index")
         return reverse("content:page", kwargs={"slug": item.page.slug})
+
     if item.url_key:
         return f"{reverse('content:home')}#{item.url_key}"
 
@@ -171,6 +177,8 @@ def _navigation_href(item) -> str:
         return f"{reverse('content:home')}#{href.replace('/#', '', 1)}"
     if href.startswith("#"):
         return f"{reverse('content:home')}#{href.replace('#', '', 1)}"
+    if href.strip("/") == "expeditions":
+        return reverse("content:expeditions-index")
     if href.startswith("/"):
         return href
     return href or "#"
@@ -233,7 +241,7 @@ def _hero_payload(
             "title": _text(texts, "section.hero.title", hero_model.title),
             "subtitle": _text(texts, "section.hero.subtitle", hero_model.subtitle),
             "cta_label": _text(texts, "section.hero.cta_label", hero_model.cta_label),
-            "cta_url": hero_model.cta_url or "#expeditions",
+            "cta_url": hero_model.cta_url or reverse("content:expeditions-index"),
             "scroll_label": _text(texts, "section.hero.scroll_label", hero_model.scroll_label),
             "image_url": _resolve_media_url(hero_model.media, "content/images/hero-default.svg"),
         }
@@ -248,7 +256,7 @@ def _hero_payload(
             "title": _text(texts, "section.hero.title", section.get("title", site_brand_name)),
             "subtitle": _text(texts, "section.hero.subtitle", section.get("subtitle", "")),
             "cta_label": _text(texts, "section.hero.cta_label", section["payload"].get("cta_label", "")),
-            "cta_url": section["payload"].get("cta_url") or "#expeditions",
+            "cta_url": section["payload"].get("cta_url") or reverse("content:expeditions-index"),
             "scroll_label": _text(
                 texts,
                 "section.hero.scroll_label",
@@ -263,24 +271,34 @@ def _hero_payload(
         "title": _text(texts, "section.hero.title", site_brand_name),
         "subtitle": _text(texts, "section.hero.subtitle", ""),
         "cta_label": _text(texts, "section.hero.cta_label", ""),
-        "cta_url": "#expeditions",
+        "cta_url": reverse("content:expeditions-index"),
         "scroll_label": _text(texts, "section.hero.scroll_label", ""),
         "image_url": static("content/images/hero-default.svg"),
     }
 
 
-def _language_switches(page: Page, lang_code: str, texts: dict[str, str]) -> list[dict]:
+def _language_switches(
+    route_name: str,
+    route_kwargs: dict,
+    lang_code: str,
+    texts: dict[str, str],
+) -> list[dict]:
     default_code = _default_language_code()
     queryset = Language.objects.filter(is_active=True).order_by("order", "id")
     if not queryset.exists():
         fallback = []
         for index, (code, label) in enumerate(getattr(settings, "LANGUAGES", (("en", "English"),)), start=1):
             normalized = str(code).split("-")[0].lower()
+            with translation.override(normalized):
+                try:
+                    url = reverse(route_name, kwargs=route_kwargs)
+                except Exception:
+                    url = reverse("content:home")
             fallback.append(
                 {
                     "code": normalized,
                     "label": _text(texts, f"lang.{normalized}", str(label)),
-                    "url": reverse("content:home") if page.is_home else reverse("content:page", kwargs={"slug": page.slug}),
+                    "url": url,
                     "is_active": normalized == lang_code,
                     "order": index if normalized != default_code else 0,
                 }
@@ -290,10 +308,10 @@ def _language_switches(page: Page, lang_code: str, texts: dict[str, str]) -> lis
     switches = []
     for language in queryset:
         with translation.override(language.code):
-            if page.is_home:
+            try:
+                url = reverse(route_name, kwargs=route_kwargs)
+            except Exception:
                 url = reverse("content:home")
-            else:
-                url = reverse("content:page", kwargs={"slug": page.slug})
         switches.append(
             {
                 "code": language.code,
@@ -306,14 +324,103 @@ def _language_switches(page: Page, lang_code: str, texts: dict[str, str]) -> lis
     return switches
 
 
+def _expedition_payload(expedition: Expedition, texts: dict[str, str], lang_code: str, fallback_lang: str) -> dict:
+    key_prefix = f"expedition.{expedition.slug}"
+    return {
+        "title": _text(texts, f"{key_prefix}.title", expedition.title),
+        "subtitle": _text(
+            texts,
+            f"{key_prefix}.subtitle",
+            expedition.subtitle or expedition.description,
+        ),
+        "date_label": _text(texts, f"{key_prefix}.date_label", expedition.date_label),
+        "description": _text(texts, f"{key_prefix}.description", expedition.description),
+        "slug": expedition.slug,
+        "detail_url": reverse("content:expedition-detail", kwargs={"slug": expedition.slug}),
+        "cover_url": _resolve_media_url(
+            expedition.cover,
+            "content/images/expedition-default.svg",
+            expedition.image_url,
+        ),
+        "lang_code": lang_code,
+        "fallback_lang": fallback_lang,
+    }
+
+
 class ContactMessageForm(forms.ModelForm):
     class Meta:
         model = ContactMessage
         fields = ("name", "email", "message")
 
 
-class BaseContentPageView(TemplateView):
+class SiteContextMixin:
+    def _site_context(self, route_name: str, route_kwargs: dict | None = None) -> dict:
+        route_kwargs = route_kwargs or {}
+        lang_code = _active_language_code()
+        fallback_lang = _default_language_code()
+
+        site_settings = SiteSettings.objects.order_by("-updated_at").first()
+        if site_settings is None:
+            site_settings = SiteSettings.objects.create(brand_name="Romanweiẞ", footer_title="Romanweiẞ")
+
+        texts = _site_text_map(lang_code, fallback_lang)
+        site_payload = _site_settings_payload(site_settings, lang_code, fallback_lang)
+        nav_payload = _navigation_payload(lang_code, fallback_lang, texts)
+        language_switches = _language_switches(route_name, route_kwargs, lang_code, texts)
+
+        ui = {
+            "detail_location": _text(texts, "detail.location", "Location"),
+            "detail_email": _text(texts, "detail.email", "Email"),
+            "detail_socials": _text(texts, "detail.socials", "Socials"),
+            "form_name_label": _text(texts, "form.name.label", "Name"),
+            "form_name_placeholder": _text(texts, "form.name.placeholder", "Your name"),
+            "form_email_label": _text(texts, "form.email.label", "Email"),
+            "form_email_placeholder": _text(texts, "form.email.placeholder", "your@email.com"),
+            "form_message_label": _text(texts, "form.message.label", "Message"),
+            "form_message_placeholder": _text(texts, "form.message.placeholder", "Tell me about your project..."),
+            "form_submit": _text(texts, "form.submit", "Send message"),
+            "newsletter_placeholder": _text(texts, "newsletter.placeholder", "Email address"),
+            "newsletter_button": _text(texts, "newsletter.button", "Join"),
+            "lang_switcher": _text(texts, "lang.switcher", "Language"),
+            "expeditions_index_title": _text(texts, "expeditions.index.title", "Recent expeditions"),
+            "expeditions_index_subtitle": _text(
+                texts,
+                "expeditions.index.subtitle",
+                "Routes through remote locations.",
+            ),
+            "expeditions_index_cta": _text(texts, "expeditions.index.card_cta", "Open expedition"),
+            "expedition_detail_back": _text(texts, "expedition.detail.back", "Back to expeditions"),
+            "expedition_detail_media_title": _text(texts, "expedition.detail.media_title", "Media"),
+            "expedition_detail_story_title": _text(texts, "expedition.detail.story_title", "Field notes"),
+            "expedition_detail_video_placeholder": _text(
+                texts,
+                "expedition.detail.video_placeholder",
+                "Video placeholder",
+            ),
+            "lightbox_open_image": _text(texts, "lightbox.open_image", "Open image"),
+            "lightbox_close": _text(texts, "lightbox.close", "Close"),
+            "lightbox_prev": _text(texts, "lightbox.prev", "Previous"),
+            "lightbox_next": _text(texts, "lightbox.next", "Next"),
+        }
+
+        return {
+            "_lang_code": lang_code,
+            "_fallback_lang": fallback_lang,
+            "_texts": texts,
+            "site": site_payload,
+            "ui": ui,
+            "main_menu": nav_payload.get("main", []),
+            "footer_menu": nav_payload.get("footer", []),
+            "social_menu": nav_payload.get("social", []),
+            "language_switches": language_switches,
+            "form": ContactMessageForm(),
+            "expeditions_index_url": reverse("content:expeditions-index"),
+        }
+
+
+class BaseContentPageView(SiteContextMixin, TemplateView):
     template_name = "content/page.html"
+    route_name = "content:home"
 
     def _resolve_page(self):
         slug = self.kwargs.get("slug")
@@ -330,58 +437,43 @@ class BaseContentPageView(TemplateView):
                 return page
         return queryset.filter(is_home=True).first() or queryset.first()
 
-    def _base_context(self):
+    def _route_kwargs(self, page: Page | None) -> dict:
+        return {}
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
         page = self._resolve_page()
+        base = self._site_context(self.route_name, self._route_kwargs(page))
+        context.update(base)
+
         if page is None:
-            return {
-                "page_obj": None,
-                "site": {},
-                "ui": {},
-                "main_menu": [],
-                "footer_menu": [],
-                "social_menu": [],
-                "language_switches": [],
-                "journal_intro_section": {},
-                "expeditions_section": {},
-                "categories_section": {},
-                "stories_section": {},
-                "contact_section": {},
-                "hero": {},
-                "expeditions": [],
-                "categories": [],
-                "stories": [],
-                "form": ContactMessageForm(),
-            }
-
-        lang_code = _active_language_code()
-        fallback_lang = _default_language_code()
-
-        site_settings = SiteSettings.objects.order_by("-updated_at").first()
-        if site_settings is None:
-            site_settings = SiteSettings.objects.create(brand_name="Romanweiẞ", footer_title="Romanweiẞ")
-
-        texts = _site_text_map(lang_code, fallback_lang)
-        site_payload = _site_settings_payload(site_settings, lang_code, fallback_lang)
-        sections = _localized_sections(page, lang_code, fallback_lang)
-
-        expeditions = []
-        for expedition in Expedition.objects.filter(is_published=True).select_related("cover").order_by("order", "id"):
-            key_prefix = f"expedition.{expedition.slug}"
-            title = _text(texts, f"{key_prefix}.title", expedition.title)
-            subtitle_default = expedition.subtitle or expedition.description
-            expeditions.append(
+            context.update(
                 {
-                    "title": title,
-                    "subtitle": _text(texts, f"{key_prefix}.subtitle", subtitle_default),
-                    "date_label": _text(texts, f"{key_prefix}.date_label", expedition.date_label),
-                    "slug": expedition.slug,
-                    "cover_url": _resolve_media_url(
-                        expedition.cover,
-                        "content/images/expedition-default.svg",
-                        expedition.image_url,
-                    ),
+                    "page_obj": None,
+                    "hero": {},
+                    "journal_intro_section": {},
+                    "expeditions_section": {},
+                    "categories_section": {},
+                    "stories_section": {},
+                    "contact_section": {},
+                    "expeditions": [],
+                    "categories": [],
+                    "stories": [],
+                    "page_title": context["site"].get("brand_name", ""),
                 }
             )
+            return context
+
+        lang_code = context["_lang_code"]
+        fallback_lang = context["_fallback_lang"]
+        texts = context["_texts"]
+        sections = _localized_sections(page, lang_code, fallback_lang)
+
+        expeditions = [
+            _expedition_payload(expedition, texts, lang_code, fallback_lang)
+            for expedition in Expedition.objects.filter(is_published=True).select_related("cover").order_by("order", "id")
+        ]
 
         categories = []
         for category in Category.objects.filter(is_published=True).select_related("cover").order_by("order", "id"):
@@ -424,59 +516,171 @@ class BaseContentPageView(TemplateView):
                 }
             )
 
-        nav_payload = _navigation_payload(lang_code, fallback_lang, texts)
-        hero = _hero_payload(page, sections, texts, site_payload["brand_name"])
-        language_switches = _language_switches(page, lang_code, texts)
+        hero = _hero_payload(page, sections, texts, context["site"].get("brand_name", ""))
 
-        ui = {
-            "detail_location": _text(texts, "detail.location", "Location"),
-            "detail_email": _text(texts, "detail.email", "Email"),
-            "detail_socials": _text(texts, "detail.socials", "Socials"),
-            "form_name_label": _text(texts, "form.name.label", "Name"),
-            "form_name_placeholder": _text(texts, "form.name.placeholder", "Your name"),
-            "form_email_label": _text(texts, "form.email.label", "Email"),
-            "form_email_placeholder": _text(texts, "form.email.placeholder", "your@email.com"),
-            "form_message_label": _text(texts, "form.message.label", "Message"),
-            "form_message_placeholder": _text(texts, "form.message.placeholder", "Tell me about your project..."),
-            "form_submit": _text(texts, "form.submit", "Send message"),
-            "newsletter_placeholder": _text(texts, "newsletter.placeholder", "Email address"),
-            "newsletter_button": _text(texts, "newsletter.button", "Join"),
-        }
-
-        context = {
-            "page_obj": page,
-            "site": site_payload,
-            "ui": ui,
-            "hero": hero,
-            "main_menu": nav_payload.get("main", []),
-            "footer_menu": nav_payload.get("footer", []),
-            "social_menu": nav_payload.get("social", []),
-            "language_switches": language_switches,
-            "journal_intro_section": sections.get("journal-intro", {}),
-            "expeditions_section": sections.get("expeditions", {}),
-            "categories_section": sections.get("categories", {}),
-            "stories_section": sections.get("stories", {}),
-            "contact_section": sections.get("contact", {}),
-            "expeditions": expeditions,
-            "categories": categories,
-            "stories": stories,
-            "form": ContactMessageForm(),
-            "page_title": site_payload["brand_name"],
-        }
-        return context
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context.update(self._base_context())
+        context.update(
+            {
+                "page_obj": page,
+                "hero": hero,
+                "journal_intro_section": sections.get("journal-intro", {}),
+                "expeditions_section": sections.get("expeditions", {}),
+                "categories_section": sections.get("categories", {}),
+                "stories_section": sections.get("stories", {}),
+                "contact_section": sections.get("contact", {}),
+                "expeditions": expeditions,
+                "categories": categories,
+                "stories": stories,
+                "page_title": context["site"].get("brand_name", ""),
+            }
+        )
         return context
 
 
 class HomePageView(BaseContentPageView):
-    pass
+    route_name = "content:home"
 
 
 class ContentPageView(BaseContentPageView):
-    pass
+    route_name = "content:page"
+
+    def _route_kwargs(self, page: Page | None) -> dict:
+        slug = page.slug if page else self.kwargs.get("slug")
+        return {"slug": slug} if slug else {}
+
+
+class ExpeditionsIndexView(SiteContextMixin, TemplateView):
+    template_name = "content/expeditions_index.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        base = self._site_context("content:expeditions-index")
+        context.update(base)
+
+        lang_code = context["_lang_code"]
+        fallback_lang = context["_fallback_lang"]
+        texts = context["_texts"]
+
+        expeditions = [
+            _expedition_payload(expedition, texts, lang_code, fallback_lang)
+            for expedition in Expedition.objects.filter(is_published=True).select_related("cover").order_by("order", "id")
+        ]
+
+        context.update(
+            {
+                "expeditions": expeditions,
+                "index_title": context["ui"]["expeditions_index_title"],
+                "index_subtitle": context["ui"]["expeditions_index_subtitle"],
+                "page_title": context["site"].get("brand_name", ""),
+            }
+        )
+        return context
+
+
+class ExpeditionDetailView(SiteContextMixin, TemplateView):
+    template_name = "content/expedition_detail.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        expedition = (
+            Expedition.objects.filter(is_published=True, slug=self.kwargs.get("slug"))
+            .select_related("cover")
+            .first()
+        )
+        if expedition is None:
+            raise Http404("Expedition not found.")
+
+        base = self._site_context("content:expedition-detail", {"slug": expedition.slug})
+        context.update(base)
+
+        lang_code = context["_lang_code"]
+        fallback_lang = context["_fallback_lang"]
+        texts = context["_texts"]
+
+        expedition_payload = _expedition_payload(expedition, texts, lang_code, fallback_lang)
+        media_items = (
+            ExpeditionMedia.objects.filter(expedition=expedition, is_published=True)
+            .select_related("media")
+            .order_by("order", "id")
+        )
+
+        blocks = []
+        lightbox_images = []
+
+        if media_items.exists():
+            for media_item in media_items:
+                title = _localize_text(media_item.title, media_item.title_i18n, lang_code, fallback_lang)
+                body = _localize_text(media_item.body, media_item.body_i18n, lang_code, fallback_lang)
+
+                if media_item.kind == ExpeditionMedia.KIND_IMAGE:
+                    image_url = _resolve_media_url(
+                        media_item.media,
+                        "content/images/expedition-default.svg",
+                        media_item.image_url,
+                    )
+                    alt_text = media_item.alt_text or title or expedition_payload["title"]
+                    lightbox_index = len(lightbox_images)
+                    lightbox_images.append({"src": image_url, "alt": alt_text})
+                    blocks.append(
+                        {
+                            "kind": "image",
+                            "title": title,
+                            "image_url": image_url,
+                            "alt_text": alt_text,
+                            "lightbox_index": lightbox_index,
+                        }
+                    )
+                elif media_item.kind == ExpeditionMedia.KIND_VIDEO:
+                    blocks.append(
+                        {
+                            "kind": "video",
+                            "title": title or context["ui"]["expedition_detail_media_title"],
+                            "video_url": media_item.video_url,
+                            "placeholder": context["ui"]["expedition_detail_video_placeholder"],
+                        }
+                    )
+                else:
+                    blocks.append(
+                        {
+                            "kind": "story",
+                            "title": title or context["ui"]["expedition_detail_story_title"],
+                            "body": body or expedition_payload["description"],
+                        }
+                    )
+
+        if not blocks:
+            fallback_image = expedition_payload["cover_url"]
+            lightbox_images.append({"src": fallback_image, "alt": expedition_payload["title"]})
+            blocks = [
+                {
+                    "kind": "image",
+                    "title": expedition_payload["title"],
+                    "image_url": fallback_image,
+                    "alt_text": expedition_payload["title"],
+                    "lightbox_index": 0,
+                },
+                {
+                    "kind": "story",
+                    "title": context["ui"]["expedition_detail_story_title"],
+                    "body": expedition_payload["description"],
+                },
+                {
+                    "kind": "video",
+                    "title": context["ui"]["expedition_detail_media_title"],
+                    "video_url": "",
+                    "placeholder": context["ui"]["expedition_detail_video_placeholder"],
+                },
+            ]
+
+        context.update(
+            {
+                "expedition": expedition_payload,
+                "media_blocks": blocks,
+                "lightbox_images": lightbox_images,
+                "page_title": context["site"].get("brand_name", ""),
+            }
+        )
+        return context
 
 
 class ContactSubmitView(View):

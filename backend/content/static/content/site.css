@@ -22,6 +22,12 @@ a {
   color: inherit;
 }
 
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 78%, #ffffff);
+  outline-offset: 2px;
+}
+
 .site-header,
 .site-footer,
 main {
@@ -53,6 +59,12 @@ main {
 .main-nav a,
 .lang-nav a {
   text-decoration: none;
+  transition: color 180ms ease, opacity 180ms ease;
+}
+
+.main-nav a:hover,
+.lang-nav a:hover {
+  color: color-mix(in srgb, var(--text) 70%, var(--accent));
 }
 
 .lang-nav a.active {
@@ -100,6 +112,75 @@ main {
   margin-top: 1rem;
 }
 
+.hero-scroll-indicator {
+  margin-top: 1rem;
+  display: grid;
+  justify-items: center;
+  gap: 0.55rem;
+}
+
+.hero-scroll-indicator .scroll {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  opacity: 0.92;
+}
+
+.scroll-arrow {
+  display: grid;
+  justify-items: center;
+  gap: 0.18rem;
+  width: 14px;
+}
+
+.scroll-arrow span {
+  display: block;
+  width: 2px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.32);
+  transform-origin: center;
+  animation: scroll-segment 1.6s ease-in-out infinite;
+}
+
+.scroll-arrow span:nth-child(2) {
+  animation-delay: 0.11s;
+}
+
+.scroll-arrow span:nth-child(3) {
+  animation-delay: 0.22s;
+}
+
+.scroll-arrow span:nth-child(4) {
+  animation-delay: 0.33s;
+}
+
+.scroll-arrow span:nth-child(5) {
+  animation-delay: 0.44s;
+}
+
+.scroll-arrow span:nth-child(6) {
+  animation-delay: 0.55s;
+}
+
+.scroll-arrow span:nth-child(7) {
+  animation-delay: 0.66s;
+}
+
+@keyframes scroll-segment {
+  0%,
+  100% {
+    background: rgba(255, 255, 255, 0.22);
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  42% {
+    background: rgba(255, 255, 255, 0.96);
+    transform: translateY(1px);
+    opacity: 1;
+  }
+}
+
 .button,
 button {
   border: 1px solid var(--text);
@@ -108,11 +189,22 @@ button {
   padding: 0.6rem 1rem;
   text-decoration: none;
   cursor: pointer;
+  transition: background-color 220ms ease, color 220ms ease, box-shadow 220ms ease, transform 220ms ease;
 }
 
 .button.ghost {
   background: transparent;
   color: var(--text);
+}
+
+.button.ghost:hover,
+.button.ghost:focus-visible {
+  background: color-mix(in srgb, var(--accent) 14%, #ffffff);
+  box-shadow: 0 8px 22px rgba(22, 33, 44, 0.12);
+}
+
+.view-all-link {
+  border-color: color-mix(in srgb, var(--text) 72%, var(--accent));
 }
 
 .section {
@@ -153,6 +245,36 @@ button {
   padding: 0.8rem;
 }
 
+.expedition-card-link {
+  display: block;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 240ms ease, box-shadow 240ms ease, border-color 240ms ease;
+}
+
+.expedition-card-media-wrap {
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.expedition-card-media {
+  transition: transform 340ms ease;
+}
+
+.expedition-card-link:hover,
+.expedition-card-link:focus-visible {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 20%, var(--line));
+  box-shadow:
+    0 10px 24px rgba(16, 14, 13, 0.12),
+    0 3px 9px rgba(26, 56, 70, 0.1);
+}
+
+.expedition-card-link:hover .expedition-card-media,
+.expedition-card-link:focus-visible .expedition-card-media {
+  transform: scale(1.045);
+}
+
 .card img,
 .story-item img {
   width: 100%;
@@ -179,6 +301,164 @@ button {
 .intro {
   font-size: 1.1rem;
   color: var(--muted);
+}
+
+.expeditions-index h1 {
+  margin: 0.35rem 0 0;
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+}
+
+.back-link {
+  display: inline-flex;
+  margin-bottom: 0.9rem;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.back-link:hover,
+.back-link:focus-visible {
+  color: var(--text);
+}
+
+.expedition-header h1 {
+  margin: 0.25rem 0 0.4rem;
+  font-size: clamp(1.9rem, 4vw, 3.1rem);
+}
+
+.expedition-lead {
+  max-width: 66ch;
+  color: var(--muted);
+  font-size: 1.06rem;
+  line-height: 1.7;
+}
+
+.expedition-media-section {
+  margin-top: 1.1rem;
+}
+
+.expedition-media-grid {
+  margin-top: 0.8rem;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.expedition-media-card {
+  border: 1px solid var(--line);
+  background: var(--card);
+  padding: 0;
+  display: block;
+}
+
+.image-card {
+  cursor: zoom-in;
+}
+
+.image-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.media-caption {
+  display: block;
+  padding: 0.55rem 0.7rem 0.65rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.video-card .video-frame {
+  aspect-ratio: 16 / 10;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(140deg, #d8d2c8, #f4efe8);
+  display: grid;
+  place-items: center;
+}
+
+.video-card video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video-placeholder {
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+.story-card {
+  padding: 1.1rem 1.2rem;
+}
+
+.story-card h3 {
+  margin: 0 0 0.55rem;
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+}
+
+.story-card p {
+  margin: 0;
+  max-width: 66ch;
+  line-height: 1.88;
+  font-size: 1.03rem;
+  color: color-mix(in srgb, var(--text) 88%, #000000);
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+}
+
+.lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(12, 11, 10, 0.8);
+}
+
+.lightbox-panel {
+  position: relative;
+  height: 100%;
+  width: min(1100px, 100vw);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  padding: 1rem;
+}
+
+.lightbox-figure {
+  margin: 0;
+}
+
+.lightbox-image {
+  max-height: 88vh;
+  width: 100%;
+  object-fit: contain;
+}
+
+.lightbox-close,
+.lightbox-nav {
+  position: relative;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: #ffffff;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+}
+
+.lightbox-nav.prev {
+  margin-right: 0.8rem;
+}
+
+.lightbox-nav.next {
+  margin-left: 0.8rem;
 }
 
 .split {
@@ -244,5 +524,33 @@ textarea {
   .split,
   .footer-columns {
     grid-template-columns: 1fr;
+  }
+
+  .lightbox-panel {
+    grid-template-columns: 1fr;
+    align-items: end;
+    justify-items: center;
+    gap: 0.7rem;
+    padding: 0.5rem;
+  }
+
+  .lightbox-nav.prev,
+  .lightbox-nav.next {
+    margin: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .scroll-arrow span {
+    background: rgba(255, 255, 255, 0.75);
   }
 }

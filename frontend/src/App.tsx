@@ -1,16 +1,20 @@
 import {
   FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
+  type TouchEvent as ReactTouchEvent,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { getNavigation, getPageBySlug, sendContactMessage } from "./api";
+import { getExpeditions, getNavigation, getPageBySlug, sendContactMessage } from "./api";
 import { useI18n } from "./i18n";
 import type {
   ContactMessagePayload,
+  ExpeditionData,
+  ExpeditionMediaItem,
   NavigationItem,
   PageData,
   PageSection,
@@ -18,9 +22,17 @@ import type {
 
 type SubmitStatus = "idle" | "sending" | "success" | "error";
 type ThemeMode = "light" | "dark";
+type TranslateFn = (key: string, fallback?: string) => string;
+
+type AppRoute =
+  | { kind: "page"; slug: string }
+  | { kind: "expeditions-index" }
+  | { kind: "expedition-detail"; slug: string };
 
 type ExpeditionCard = {
   title?: string;
+  subtitle?: string;
+  slug?: string;
   date_label?: string;
   description?: string;
   image_url?: string;
@@ -39,6 +51,36 @@ type StoryItem = {
   image_url?: string;
 };
 
+type ResolvedMediaBlock =
+  | {
+      kind: "image";
+      title: string;
+      body: string;
+      imageUrl: string;
+      altText: string;
+    }
+  | {
+      kind: "video";
+      title: string;
+      body: string;
+      videoUrl: string;
+    }
+  | {
+      kind: "story";
+      title: string;
+      body: string;
+    };
+
+type ResolvedExpedition = {
+  slug: string;
+  title: string;
+  subtitle: string;
+  dateLabel: string;
+  description: string;
+  imageUrl: string;
+  mediaBlocks: ResolvedMediaBlock[];
+};
+
 const THEME_STORAGE_KEY = "site.theme";
 
 function readInitialTheme(): ThemeMode {
@@ -49,9 +91,43 @@ function readInitialTheme(): ThemeMode {
   return saved === "dark" ? "dark" : "light";
 }
 
-function pathToSlug(pathname: string): string {
+function slugifyToken(value: string, fallback = "item"): string {
+  const slug = value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || fallback;
+}
+
+function parseRoute(pathname: string): AppRoute {
   const cleaned = pathname.replace(/^\/+|\/+$/g, "");
-  return cleaned || "home";
+  if (!cleaned) {
+    return { kind: "page", slug: "home" };
+  }
+
+  const parts = cleaned.split("/");
+  if (parts[0] === "expeditions") {
+    if (parts.length === 1 || !parts[1]) {
+      return { kind: "expeditions-index" };
+    }
+    return { kind: "expedition-detail", slug: parts[1] };
+  }
+
+  return { kind: "page", slug: cleaned };
+}
+
+function routeToPath(route: AppRoute, pageSlugs: string[]): string {
+  if (route.kind === "expeditions-index") {
+    return "/expeditions/";
+  }
+  if (route.kind === "expedition-detail") {
+    return `/expeditions/${route.slug}/`;
+  }
+  if (route.slug === "home") {
+    return "/";
+  }
+  return pageSlugs.includes(route.slug) ? `/${route.slug}/` : "/";
 }
 
 function sectionMap(page: PageData | null): Map<string, PageSection> {
@@ -89,12 +165,175 @@ function isExternalHref(href: string): boolean {
   return /^https?:\/\//i.test(href) || href.startsWith("mailto:");
 }
 
+function nonEmpty(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function fallbackMediaBlocks(
+  expedition: Omit<ResolvedExpedition, "mediaBlocks">,
+  t: TranslateFn
+): ResolvedMediaBlock[] {
+  return [
+    {
+      kind: "image",
+      title: expedition.title,
+      body: "",
+      imageUrl: expedition.imageUrl,
+      altText: expedition.title,
+    },
+    {
+      kind: "story",
+      title: t("expedition.detail.story_title", "Field notes"),
+      body: expedition.description,
+    },
+    {
+      kind: "video",
+      title: t("expedition.detail.video_title", "Video diary"),
+      body: "",
+      videoUrl: "",
+    },
+  ];
+}
+
+function fromApiMedia(
+  mediaItems: ExpeditionMediaItem[],
+  base: Omit<ResolvedExpedition, "mediaBlocks">,
+  t: TranslateFn
+): ResolvedMediaBlock[] {
+  const blocks: ResolvedMediaBlock[] = [];
+
+  for (const media of mediaItems ?? []) {
+    if (media.kind === "image") {
+      const imageUrl = nonEmpty(media.media_url) || base.imageUrl;
+      if (!imageUrl) {
+        continue;
+      }
+      blocks.push({
+        kind: "image",
+        title: nonEmpty(media.title) || base.title,
+        body: nonEmpty(media.body),
+        imageUrl,
+        altText: nonEmpty(media.alt_text) || nonEmpty(media.title) || base.title,
+      });
+      continue;
+    }
+
+    if (media.kind === "video") {
+      blocks.push({
+        kind: "video",
+        title: nonEmpty(media.title) || t("expedition.detail.video_title", "Video diary"),
+        body: nonEmpty(media.body),
+        videoUrl: nonEmpty(media.video_url),
+      });
+      continue;
+    }
+
+    if (media.kind === "story") {
+      blocks.push({
+        kind: "story",
+        title: nonEmpty(media.title) || t("expedition.detail.story_title", "Field notes"),
+        body: nonEmpty(media.body) || base.description,
+      });
+    }
+  }
+
+  if (!blocks.some((block) => block.kind === "image") && base.imageUrl) {
+    blocks.unshift({
+      kind: "image",
+      title: base.title,
+      body: "",
+      imageUrl: base.imageUrl,
+      altText: base.title,
+    });
+  }
+
+  if (!blocks.some((block) => block.kind === "story")) {
+    const storyBlock: ResolvedMediaBlock = {
+      kind: "story",
+      title: t("expedition.detail.story_title", "Field notes"),
+      body: base.description,
+    };
+    const firstImageIndex = blocks.findIndex((block) => block.kind === "image");
+    if (firstImageIndex >= 0) {
+      blocks.splice(firstImageIndex + 1, 0, storyBlock);
+    } else {
+      blocks.push(storyBlock);
+    }
+  }
+
+  if (!blocks.some((block) => block.kind === "video")) {
+    blocks.push({
+      kind: "video",
+      title: t("expedition.detail.video_title", "Video diary"),
+      body: "",
+      videoUrl: "",
+    });
+  }
+
+  return blocks;
+}
+
+function resolveExpeditions(
+  apiExpeditions: ExpeditionData[],
+  sectionCards: ExpeditionCard[],
+  t: TranslateFn
+): ResolvedExpedition[] {
+  if (apiExpeditions.length) {
+    return apiExpeditions.map((expedition, index) => {
+      const fallbackTitle = nonEmpty(expedition.title) || `Expedition ${index + 1}`;
+      const slug = nonEmpty(expedition.slug) || slugifyToken(fallbackTitle, `expedition-${index + 1}`);
+      const title = t(`expedition.${slug}.title`, fallbackTitle);
+      const subtitleFallback = nonEmpty(expedition.subtitle) || nonEmpty(expedition.description);
+      const subtitle = t(`expedition.${slug}.subtitle`, subtitleFallback);
+      const description = t(
+        `expedition.${slug}.description`,
+        nonEmpty(expedition.description) || subtitle
+      );
+      const dateLabel = t(`expedition.${slug}.date_label`, nonEmpty(expedition.date_label));
+      const imageUrl = nonEmpty(expedition.cover_url) || nonEmpty(expedition.image_url);
+
+      const base = {
+        slug,
+        title,
+        subtitle,
+        dateLabel,
+        description,
+        imageUrl,
+      };
+
+      return {
+        ...base,
+        mediaBlocks: fromApiMedia(expedition.media_items || [], base, t),
+      };
+    });
+  }
+
+  return sectionCards.map((item, index) => {
+    const fallbackTitle = nonEmpty(item.title) || `Expedition ${index + 1}`;
+    const slug = nonEmpty(item.slug) || slugifyToken(fallbackTitle, `expedition-${index + 1}`);
+    const title = t(`expedition.${slug}.title`, fallbackTitle);
+    const subtitle = t(
+      `expedition.${slug}.subtitle`,
+      nonEmpty(item.subtitle) || nonEmpty(item.description)
+    );
+    const description = t(`expedition.${slug}.description`, nonEmpty(item.description) || subtitle);
+    const dateLabel = t(`expedition.${slug}.date_label`, nonEmpty(item.date_label));
+    const imageUrl = nonEmpty(item.image_url);
+    const base = { slug, title, subtitle, dateLabel, description, imageUrl };
+
+    return {
+      ...base,
+      mediaBlocks: fallbackMediaBlocks(base, t),
+    };
+  });
+}
+
 export default function App() {
   const { lang, setLang, t, isLoading: isI18nLoading, content } = useI18n();
 
   const [theme, setTheme] = useState<ThemeMode>(readInitialTheme);
-  const [currentSlug, setCurrentSlug] = useState<string>(() =>
-    typeof window === "undefined" ? "home" : pathToSlug(window.location.pathname)
+  const [route, setRoute] = useState<AppRoute>(() =>
+    typeof window === "undefined" ? { kind: "page", slug: "home" } : parseRoute(window.location.pathname)
   );
   const [page, setPage] = useState<PageData | null>(null);
   const [isPageLoading, setIsPageLoading] = useState<boolean>(true);
@@ -106,6 +345,9 @@ export default function App() {
   });
   const [isNavigationLoading, setIsNavigationLoading] = useState<boolean>(true);
   const [navigationError, setNavigationError] = useState<string>("");
+  const [expeditionsData, setExpeditionsData] = useState<ExpeditionData[]>([]);
+  const [isExpeditionsLoading, setIsExpeditionsLoading] = useState<boolean>(true);
+  const [expeditionsError, setExpeditionsError] = useState<string>("");
   const [contactForm, setContactForm] = useState<ContactMessagePayload>({
     name: "",
     email: "",
@@ -113,26 +355,36 @@ export default function App() {
   });
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>("idle");
   const [submitMessage, setSubmitMessage] = useState<string>("");
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const pageRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLElement | null>(null);
   const heroRef = useRef<HTMLElement | null>(null);
+  const lightboxTouchStartX = useRef<number | null>(null);
+  const lightboxTouchStartY = useRef<number | null>(null);
 
-  const navigateToSlug = useCallback(
-    (slug: string, replace = false) => {
+  const navigateToRoute = useCallback(
+    (nextRoute: AppRoute, replace = false) => {
       if (typeof window === "undefined") {
         return;
       }
-      const pageMeta = content?.pages.find((item) => item.slug === slug);
-      const path = pageMeta?.is_home || slug === "home" ? "/" : `/${slug}/`;
+      const knownSlugs = (content?.pages ?? []).map((item) => item.slug);
+      const path = routeToPath(nextRoute, knownSlugs);
       if (replace) {
         window.history.replaceState({}, "", `${path}${window.location.search}`);
       } else {
         window.history.pushState({}, "", `${path}${window.location.search}`);
       }
-      setCurrentSlug(slug);
+      setRoute(nextRoute);
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
     [content]
+  );
+
+  const navigateToSlug = useCallback(
+    (slug: string, replace = false) => {
+      navigateToRoute({ kind: "page", slug }, replace);
+    },
+    [navigateToRoute]
   );
 
   useEffect(() => {
@@ -290,32 +542,39 @@ export default function App() {
         motionMediaQuery.removeListener(handleMotionPreferenceChange);
       }
     };
-  }, [page]);
+  }, [page, route.kind]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
     const onPopState = () => {
-      setCurrentSlug(pathToSlug(window.location.pathname));
+      setRoute(parseRoute(window.location.pathname));
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
   useEffect(() => {
+    setLightboxIndex(null);
+  }, [route.kind, route.kind === "expedition-detail" ? route.slug : ""]);
+
+  useEffect(() => {
+    if (route.kind !== "page") {
+      return;
+    }
     if (!content?.pages?.length) {
       return;
     }
-    const exists = content.pages.some((item) => item.slug === currentSlug);
-    if (exists || currentSlug === "home") {
+    const exists = content.pages.some((item) => item.slug === route.slug);
+    if (exists || route.slug === "home") {
       return;
     }
     const homePage = content.pages.find((item) => item.is_home) || content.pages[0];
     if (homePage) {
       navigateToSlug(homePage.slug, true);
     }
-  }, [content, currentSlug, navigateToSlug]);
+  }, [content, route, navigateToSlug]);
 
   useEffect(() => {
     let cancelled = false;
@@ -353,19 +612,48 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
+    async function loadExpeditions() {
+      setIsExpeditionsLoading(true);
+      setExpeditionsError("");
+      try {
+        const data = await getExpeditions(lang);
+        if (!cancelled) {
+          setExpeditionsData(data || []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setExpeditionsData([]);
+          setExpeditionsError(error instanceof Error ? error.message : "");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsExpeditionsLoading(false);
+        }
+      }
+    }
+
+    void loadExpeditions();
+    return () => {
+      cancelled = true;
+    };
+  }, [lang]);
+
+  useEffect(() => {
+    let cancelled = false;
+
     async function loadPage() {
       setIsPageLoading(true);
       setPageError("");
       try {
-        const slug = currentSlug || "home";
+        const slug = route.kind === "page" ? route.slug || "home" : "home";
         const data = await getPageBySlug(slug, lang);
         if (!cancelled) {
           setPage(data.page);
         }
       } catch (error) {
         if (!cancelled) {
-          if (currentSlug !== "home") {
-            navigateToSlug("home", true);
+          if (route.kind === "page" && route.slug !== "home") {
+            navigateToRoute({ kind: "page", slug: "home" }, true);
             return;
           }
           setPage(null);
@@ -382,7 +670,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [currentSlug, lang, navigateToSlug]);
+  }, [route, lang, navigateToRoute]);
 
   const sections = useMemo(() => sectionMap(page), [page]);
   const heroSection = sections.get("hero");
@@ -410,8 +698,52 @@ export default function App() {
   const heroImage =
     heroSection?.images[0]?.image_url || payloadText(heroSection, "background_image_url");
 
+  const expeditions = useMemo(
+    () => resolveExpeditions(expeditionsData, expeditionCards, t),
+    [expeditionsData, expeditionCards, t]
+  );
+
+  const activeExpedition = useMemo(() => {
+    if (route.kind !== "expedition-detail") {
+      return null;
+    }
+    return expeditions.find((item) => item.slug === route.slug) || null;
+  }, [route, expeditions]);
+
+  const detailBlocks = useMemo(() => {
+    if (!activeExpedition) {
+      return [] as Array<ResolvedMediaBlock & { lightboxIndex?: number }>;
+    }
+    let imageIndex = 0;
+    return activeExpedition.mediaBlocks.map((block) => {
+      if (block.kind === "image") {
+        const value = { ...block, lightboxIndex: imageIndex };
+        imageIndex += 1;
+        return value;
+      }
+      return block;
+    });
+  }, [activeExpedition]);
+
+  const lightboxImages = useMemo(() => {
+    return detailBlocks
+      .filter((block): block is Extract<typeof block, { kind: "image" }> => block.kind === "image")
+      .map((block) => ({
+        src: block.imageUrl,
+        alt: block.altText,
+      }));
+  }, [detailBlocks]);
+
+  const currentLightboxImage =
+    lightboxIndex !== null && lightboxIndex >= 0 ? lightboxImages[lightboxIndex] : undefined;
+
   const isLoading =
-    isI18nLoading || isPageLoading || isNavigationLoading || !content || !page;
+    isI18nLoading ||
+    isPageLoading ||
+    isNavigationLoading ||
+    isExpeditionsLoading ||
+    !content ||
+    !page;
 
   const handleContactSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -450,9 +782,9 @@ export default function App() {
         }
       };
 
-      const isHomePath = currentSlug === "home" || window.location.pathname === "/";
+      const isHomePath = route.kind === "page" && route.slug === "home";
       if (!isHomePath) {
-        navigateToSlug("home");
+        navigateToRoute({ kind: "page", slug: "home" });
         window.setTimeout(scrollToAnchor, 120);
       } else {
         scrollToAnchor();
@@ -462,15 +794,101 @@ export default function App() {
 
     if (item.page_slug) {
       event.preventDefault();
-      navigateToSlug(item.page_slug);
+      if (item.page_slug === "expeditions") {
+        navigateToRoute({ kind: "expeditions-index" });
+      } else {
+        navigateToRoute({ kind: "page", slug: item.page_slug });
+      }
       return;
     }
 
     if (href.startsWith("/")) {
       event.preventDefault();
-      navigateToSlug(pathToSlug(href));
+      navigateToRoute(parseRoute(href));
+      return;
+    }
+
+    if (/^expeditions\/?$/.test(href)) {
+      event.preventDefault();
+      navigateToRoute({ kind: "expeditions-index" });
     }
   };
+
+  const openExpeditionDetail = useCallback(
+    (slug: string) => {
+      navigateToRoute({ kind: "expedition-detail", slug });
+    },
+    [navigateToRoute]
+  );
+
+  const handleExpeditionCardKey = useCallback(
+    (event: ReactKeyboardEvent<HTMLElement>, slug: string) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openExpeditionDetail(slug);
+      }
+    },
+    [openExpeditionDetail]
+  );
+
+  const handleLightboxNext = useCallback(() => {
+    if (!lightboxImages.length || lightboxIndex === null) {
+      return;
+    }
+    setLightboxIndex((lightboxIndex + 1) % lightboxImages.length);
+  }, [lightboxImages.length, lightboxIndex]);
+
+  const handleLightboxPrev = useCallback(() => {
+    if (!lightboxImages.length || lightboxIndex === null) {
+      return;
+    }
+    setLightboxIndex((lightboxIndex - 1 + lightboxImages.length) % lightboxImages.length);
+  }, [lightboxImages.length, lightboxIndex]);
+
+  const handleLightboxTouchStart = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
+    const touch = event.changedTouches[0];
+    lightboxTouchStartX.current = touch.clientX;
+    lightboxTouchStartY.current = touch.clientY;
+  }, []);
+
+  const handleLightboxTouchEnd = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      const touch = event.changedTouches[0];
+      const startX = lightboxTouchStartX.current;
+      const startY = lightboxTouchStartY.current;
+      if (startX === null || startY === null) {
+        return;
+      }
+      const diffX = touch.clientX - startX;
+      const diffY = touch.clientY - startY;
+      if (Math.abs(diffX) < 50 || Math.abs(diffX) < Math.abs(diffY)) {
+        return;
+      }
+      if (diffX < 0) {
+        handleLightboxNext();
+      } else {
+        handleLightboxPrev();
+      }
+    },
+    [handleLightboxNext, handleLightboxPrev]
+  );
+
+  useEffect(() => {
+    if (lightboxIndex === null) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setLightboxIndex(null);
+      } else if (event.key === "ArrowRight") {
+        handleLightboxNext();
+      } else if (event.key === "ArrowLeft") {
+        handleLightboxPrev();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [lightboxIndex, handleLightboxNext, handleLightboxPrev]);
 
   if (!content || !content.site || !page) {
     return (
@@ -479,6 +897,7 @@ export default function App() {
           <p>{isLoading ? t("status.loading") : t("status.unavailable")}</p>
           {pageError ? <small className="load-warning">{pageError}</small> : null}
           {navigationError ? <small className="load-warning">{navigationError}</small> : null}
+          {expeditionsError ? <small className="load-warning">{expeditionsError}</small> : null}
         </section>
       </div>
     );
@@ -492,6 +911,16 @@ export default function App() {
   const footerSocialTitle = t("footer.social", site.footer_social_title);
   const footerNewsletterTitle = t("footer.newsletter", site.footer_newsletter_title);
   const newsletterNote = t("footer.newsletter_note", site.newsletter_note);
+  const expeditionsTitle = payloadText(
+    expeditionsSection,
+    "title",
+    t("expeditions.index.title", "Recent expeditions")
+  );
+  const expeditionsSubtitle = payloadText(
+    expeditionsSection,
+    "subtitle",
+    t("expeditions.index.subtitle", "Journeys into the remote.")
+  );
 
   return (
     <div className="page" ref={pageRef}>
@@ -535,7 +964,7 @@ export default function App() {
         </div>
       </header>
 
-      {heroSection ? (
+      {route.kind === "page" && heroSection ? (
         <section id={heroSection.anchor || "journey"} className="hero" ref={heroRef}>
           <div
             className="hero-media"
@@ -546,22 +975,30 @@ export default function App() {
             <p className="hero-kicker">{payloadText(heroSection, "kicker")}</p>
             <h1>{heroSection.title}</h1>
             <p className="hero-subtitle">{heroSection.subtitle}</p>
-            <div className="hero-scroll">
-              {payloadText(heroSection, "scroll_label", t("section.hero.scroll_label"))}
+            <div className="hero-scroll-wrap">
+              <div className="hero-scroll">
+                {payloadText(heroSection, "scroll_label", t("section.hero.scroll_label"))}
+              </div>
+              <div className="hero-scroll-arrow" aria-hidden="true">
+                {Array.from({ length: 7 }).map((_, index) => (
+                  <span key={`scroll-segment-${index}`} />
+                ))}
+              </div>
             </div>
           </div>
         </section>
       ) : null}
 
-      {introSection ? (
+      {route.kind === "page" && introSection ? (
         <section id={introSection.anchor} className="journal-intro">
           <p>{introSection.body}</p>
           {pageError ? <small className="load-warning">{pageError}</small> : null}
           {navigationError ? <small className="load-warning">{navigationError}</small> : null}
+          {expeditionsError ? <small className="load-warning">{expeditionsError}</small> : null}
         </section>
       ) : null}
 
-      {expeditionsSection ? (
+      {route.kind === "page" && expeditionsSection ? (
         <section id={expeditionsSection.anchor} className="section expeditions">
           <div className="section-heading">
             <div>
@@ -569,30 +1006,38 @@ export default function App() {
               <h2>{payloadText(expeditionsSection, "title")}</h2>
               <p className="section-subtitle">{payloadText(expeditionsSection, "subtitle")}</p>
             </div>
-            <button className="ghost-button" type="button">
+            <button
+              className="ghost-button"
+              type="button"
+              onClick={() => navigateToRoute({ kind: "expeditions-index" })}
+            >
               {payloadText(expeditionsSection, "action_label")}
             </button>
           </div>
           <div className="expedition-grid">
-            {expeditionCards.map((item, index) => (
+            {expeditions.map((item, index) => (
               <article
-                key={`${item.title || index}-${index}`}
+                key={`${item.slug || index}-${index}`}
                 className="expedition-card interactive-card"
                 tabIndex={0}
+                role="button"
+                onClick={() => openExpeditionDetail(item.slug)}
+                onKeyDown={(event) => handleExpeditionCardKey(event, item.slug)}
+                aria-label={`${t("expeditions.index.card_cta", "Open expedition")}: ${
+                  item.title
+                }`}
               >
-                <div
-                  className="expedition-image"
-                >
+                <div className="expedition-image">
                   <div
                     className="expedition-image-media"
-                    style={item.image_url ? { backgroundImage: `url(${item.image_url})` } : undefined}
+                    style={item.imageUrl ? { backgroundImage: `url(${item.imageUrl})` } : undefined}
                     aria-hidden="true"
                   />
-                  <span>{item.date_label || ""}</span>
+                  <span>{item.dateLabel || ""}</span>
                 </div>
                 <div className="expedition-copy">
                   <h3>{item.title || ""}</h3>
-                  <p>{item.description || ""}</p>
+                  <p>{item.subtitle || ""}</p>
                 </div>
               </article>
             ))}
@@ -600,7 +1045,7 @@ export default function App() {
         </section>
       ) : null}
 
-      {categoriesSection ? (
+      {route.kind === "page" && categoriesSection ? (
         <section id={categoriesSection.anchor} className="section categories">
           <div className="section-heading">
             <div>
@@ -630,7 +1075,7 @@ export default function App() {
         </section>
       ) : null}
 
-      {storiesSection ? (
+      {route.kind === "page" && storiesSection ? (
         <section id={storiesSection.anchor} className="section stories">
           <div className="section-heading center">
             <div>
@@ -668,7 +1113,7 @@ export default function App() {
         </section>
       ) : null}
 
-      {contactSection ? (
+      {route.kind === "page" && contactSection ? (
         <section id={contactSection.anchor} className="section contact">
           <div className="contact-inner">
             <div className="contact-copy">
@@ -747,6 +1192,118 @@ export default function App() {
         </section>
       ) : null}
 
+      {route.kind === "expeditions-index" ? (
+        <section className="section expeditions-index">
+          <div className="section-heading">
+            <div>
+              <p className="section-eyebrow">{expeditionsSubtitle}</p>
+              <h2>{expeditionsTitle}</h2>
+            </div>
+          </div>
+          {expeditionsError ? <small className="load-warning">{expeditionsError}</small> : null}
+          <div className="expedition-grid">
+            {expeditions.map((item, index) => (
+              <article
+                key={`${item.slug || index}-${index}`}
+                className="expedition-card interactive-card expedition-card-index"
+                tabIndex={0}
+                role="button"
+                onClick={() => openExpeditionDetail(item.slug)}
+                onKeyDown={(event) => handleExpeditionCardKey(event, item.slug)}
+                aria-label={`${t("expeditions.index.card_cta", "Open expedition")}: ${
+                  item.title
+                }`}
+              >
+                <div className="expedition-image">
+                  <div
+                    className="expedition-image-media"
+                    style={item.imageUrl ? { backgroundImage: `url(${item.imageUrl})` } : undefined}
+                    aria-hidden="true"
+                  />
+                  <span>{item.dateLabel || ""}</span>
+                </div>
+                <div className="expedition-copy">
+                  <h3>{item.title || ""}</h3>
+                  <p>{item.subtitle || ""}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {route.kind === "expedition-detail" ? (
+        <section className="section expedition-detail">
+          <button
+            type="button"
+            className="link-button expedition-back"
+            onClick={() => navigateToRoute({ kind: "expeditions-index" })}
+          >
+            {t("expedition.detail.back", "Back to expeditions")}
+          </button>
+
+          {!activeExpedition ? (
+            <p className="section-subtitle">{t("status.unavailable", "Content is unavailable.")}</p>
+          ) : (
+            <>
+              <header className="expedition-detail-header">
+                <p className="section-eyebrow">{activeExpedition.dateLabel}</p>
+                <h2>{activeExpedition.title}</h2>
+                <p className="section-subtitle expedition-detail-lead">
+                  {activeExpedition.description}
+                </p>
+              </header>
+
+              <div className="expedition-detail-grid">
+                {detailBlocks.map((block, index) => {
+                  if (block.kind === "story") {
+                    return (
+                      <article key={`story-${index}`} className="expedition-rich-story">
+                        <h3>{block.title}</h3>
+                        <p>{block.body}</p>
+                      </article>
+                    );
+                  }
+
+                  if (block.kind === "video") {
+                    return (
+                      <article key={`video-${index}`} className="expedition-media-card video">
+                        {block.videoUrl ? (
+                          <video controls preload="metadata" src={block.videoUrl} />
+                        ) : (
+                          <div className="video-placeholder">
+                            <span>
+                              {t(
+                                "expedition.detail.video_placeholder",
+                                "Video placeholder"
+                              )}
+                            </span>
+                          </div>
+                        )}
+                        <h4>{block.title}</h4>
+                      </article>
+                    );
+                  }
+
+                  return (
+                    <button
+                      key={`image-${index}`}
+                      type="button"
+                      className="expedition-media-card image"
+                      onClick={() => setLightboxIndex(block.lightboxIndex ?? 0)}
+                      aria-label={`${t("lightbox.open_image", "Open image")}: ${block.altText}`}
+                    >
+                      <img src={block.imageUrl} alt={block.altText} />
+                      <h4>{block.title}</h4>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </section>
+      ) : null}
+
       <footer className="footer">
         <div>
           <h3>{footerTitle}</h3>
@@ -794,6 +1351,59 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {currentLightboxImage ? (
+        <div
+          className="lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("lightbox.open_image", "Open image")}
+        >
+          <button
+            type="button"
+            className="lightbox-backdrop"
+            aria-label={t("lightbox.close", "Close")}
+            onClick={() => setLightboxIndex(null)}
+          />
+          <div
+            className="lightbox-panel"
+            onTouchStart={handleLightboxTouchStart}
+            onTouchEnd={handleLightboxTouchEnd}
+          >
+            <button
+              type="button"
+              className="lightbox-close"
+              onClick={() => setLightboxIndex(null)}
+              aria-label={t("lightbox.close", "Close")}
+            >
+              {t("lightbox.close", "Close")}
+            </button>
+            <button
+              type="button"
+              className="lightbox-nav prev"
+              onClick={handleLightboxPrev}
+              aria-label={t("lightbox.prev", "Previous")}
+            >
+              {t("lightbox.prev", "Previous")}
+            </button>
+            <figure className="lightbox-figure">
+              <img
+                src={currentLightboxImage.src}
+                alt={currentLightboxImage.alt}
+                className="lightbox-image"
+              />
+            </figure>
+            <button
+              type="button"
+              className="lightbox-nav next"
+              onClick={handleLightboxNext}
+              aria-label={t("lightbox.next", "Next")}
+            >
+              {t("lightbox.next", "Next")}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

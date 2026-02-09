@@ -620,9 +620,15 @@ class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = None
 
 
-class ExpeditionViewSet(viewsets.ReadOnlyModelViewSet):
+class ExpeditionViewSet(LocalizedSerializerContextMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = ExpeditionSerializer
-    queryset = Expedition.objects.filter(is_published=True).order_by("order", "id")
+    queryset = (
+        Expedition.objects.filter(is_published=True)
+        .select_related("cover")
+        .prefetch_related("media_items__media")
+        .order_by("order", "id")
+    )
+    lookup_field = "slug"
     pagination_class = None
 
 

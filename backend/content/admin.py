@@ -7,6 +7,7 @@ from django.utils.html import format_html
 from .models import (
     Category,
     Expedition,
+    ExpeditionMedia,
     HeroSection,
     Language,
     MediaAsset,
@@ -162,6 +163,13 @@ class StoryAdminForm(LocalizedJSONModelForm):
         model = Story
 
 
+class ExpeditionMediaAdminForm(LocalizedJSONModelForm):
+    translated_fields = ("title", "body")
+
+    class Meta(LocalizedJSONModelForm.Meta):
+        model = ExpeditionMedia
+
+
 class MenuAdminForm(LocalizedJSONModelForm):
     translated_fields = ("title",)
 
@@ -238,6 +246,23 @@ class MenuItemInline(admin.TabularInline):
         "page",
         "href",
         "open_in_new_tab",
+        "order",
+        "is_published",
+    )
+
+
+class ExpeditionMediaInline(admin.StackedInline):
+    model = ExpeditionMedia
+    form = ExpeditionMediaAdminForm
+    extra = 0
+    fields = (
+        "kind",
+        "title",
+        "body",
+        "media",
+        "image_url",
+        "video_url",
+        "alt_text",
         "order",
         "is_published",
     )
@@ -433,6 +458,18 @@ class ExpeditionAdmin(ImagePreviewAdmin):
     search_fields = ("title", "slug", "subtitle", "description")
     ordering = ("order", "id")
     prepopulated_fields = {"slug": ("title",)}
+    inlines = (ExpeditionMediaInline,)
+
+
+@admin.register(ExpeditionMedia)
+class ExpeditionMediaAdmin(admin.ModelAdmin):
+    form = ExpeditionMediaAdminForm
+    list_display = ("expedition", "kind", "title", "order", "is_published", "updated_at")
+    list_editable = ("order", "is_published")
+    list_filter = ("kind", "is_published")
+    search_fields = ("expedition__title", "title", "body", "video_url", "image_url")
+    ordering = ("expedition_id", "order", "id")
+    readonly_fields = ("created_at", "updated_at")
 
 
 @admin.register(Story)

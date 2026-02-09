@@ -1,133 +1,239 @@
 ﻿# Romanweiẞ Site
 
-## 1. Project Overview
-Romanweiẞ Site is a full-stack photographer and expedition storytelling website.
+Полнофункциональный сайт фотографа и экспедиционного сторителлинга на Django + React.
 
-It is built with Django on the backend and React on the frontend. Django is the main source of truth for repeatable site content, navigation, pages, and translations.
+## 1. Что важно сразу
 
-## 2. Features
-- Content-driven pages managed from Django Admin.
-- Multilingual content support for English, Russian, and Chinese (Simplified).
-- Language-aware API responses with English fallback when translations are missing.
-- Navigation and page rendering based on backend data.
-- Slug-based routing and relative URL usage.
-- Contact message API endpoint for frontend form submissions.
+- Основной пользовательский сайт: `http://localhost:5173/`
+- Backend (API + admin): `http://localhost:8000/`
+- Django здесь используется как источник контента/переводов и API-слой.
+- React/Vite рендерит интерфейс и получает данные с Django API.
 
-## 3. Tech Stack
-- Backend: Django, Django REST Framework
-- Frontend: React, Vite
-- Database: PostgreSQL
-- Runtime: Docker-based development environment
+### Почему кажется, что «две версии сайта»
 
-## 4. Architecture Overview
-### Django as content core
-- Stores structured content entities (site settings, reusable texts, navigation, pages, sections, stories).
-- Stores language metadata and per-entity translations.
-- Exposes REST endpoints for content, navigation, and page data.
-- Provides Django Admin as the primary content management interface.
+Это ожидаемо в dev-режиме:
 
-### Frontend as rendering layer
-- Fetches localized data from backend APIs.
-- Renders sections and menus without hardcoded page copy.
-- Applies client-side language switching and slug navigation without full page reload.
+- `:5173` — фронтенд (красивый UI, который вы редактируете как сайт).
+- `:8000` — backend-сервис (админка, API, health-check; не «витрина»).
 
-## 5. Internationalization (i18n)
-### How languages are handled
-- Active languages are managed in Django (`en`, `ru`, `zh` by default).
-- Localized values are stored per entity, not per component.
-- Reusable UI strings are served from backend content dictionaries.
-- If RU or ZH text is missing, API responses fall back to EN values.
+## 2. Текущая архитектура
 
-### How to add a new language
-1. Add the language in Django language configuration and admin language records.
-2. Add translations for reusable keys and content entities in Django Admin.
-3. Ensure language labels/keys are present for frontend language switcher output.
-4. Verify API responses for the new language and fallback behavior.
+### Backend (Django)
 
-## 6. Environment Setup (high-level)
-- Prepare Docker and Docker Compose on your machine.
-- Configure project environment values for Django, database connection, and allowed origins.
-- Start backend, frontend, and PostgreSQL services through Docker Compose.
-- Apply database migrations and create an admin account.
-- Use Django Admin to manage content and translations.
+Роль:
 
-## 7. Development Notes
-- Keep Django as the single source of truth for content and translation data.
-- Avoid hardcoded user-facing text in React components.
-- Keep routing slug-based and URL handling relative.
-- Preserve the brand string Romanweiẞ exactly as-is.
-- When changing content schema, update migrations and seed logic consistently.
+- хранение контента, переводов, навигации, страниц и медиа-метаданных;
+- управление контентом через Django Admin;
+- REST API для фронтенда;
+- хранение обращений из контактной формы.
 
-## 8. Future Improvements
-- Add stronger validation for translation completeness across all entities.
-- Add caching strategy for high-traffic content endpoints.
-- Improve editorial workflows (draft/review/publish states).
-- Add API contract documentation for frontend/backoffice integration.
+Ключевые сущности в `content`:
 
----
+- `SiteSettings`
+- `SiteText`
+- `Language`
+- `TranslationKey`, `Translation`
+- `Page`, `PageSection`, `HeroSection`, `SectionImage`
+- `Menu`, `MenuItem`, `NavigationItem`
+- `Expedition`, `ExpeditionMedia`, `Category`, `Story`
+- `MediaAsset`
 
-# Romanweiẞ Site
+Отдельно в `api`:
 
-## 1. Обзор проекта
-Romanweiẞ Site — это full-stack сайт фотографа и экспедиционного сторителлинга.
+- `ContactMessage`
 
-Проект построен на Django (backend) и React (frontend). Django является основным источником истины для повторяемого контента, навигации, страниц и переводов.
+### Frontend (React + Vite)
 
-## 2. Возможности
-- Контентные страницы, управляемые через Django Admin.
-- Поддержка мультиязычного контента: английский, русский и китайский (упрощенный).
-- Языковые API-ответы с fallback на английский при отсутствии перевода.
-- Рендеринг навигации и страниц на основе данных backend.
-- Маршрутизация по slug и использование относительных URL.
-- API для отправки сообщений из формы контактов.
+Роль:
+
+- загрузка локализованных данных с `/api/...`;
+- рендер страниц/секций/карточек без жестко зашитого контента;
+- клиентская навигация по slug-маршрутам;
+- переключение языка с синхронизацией в query и cookie.
 
 ## 3. Технологический стек
-- Backend: Django, Django REST Framework
-- Frontend: React, Vite
-- База данных: PostgreSQL
-- Среда выполнения: Docker-ориентированная разработка
 
-## 4. Обзор архитектуры
-### Django как ядро контента
-- Хранит структурированные сущности контента (настройки сайта, переиспользуемые тексты, навигация, страницы, секции, истории).
-- Хранит языковые метаданные и переводы на уровне сущностей.
-- Предоставляет REST endpoints для контента, навигации и данных страниц.
-- Предоставляет Django Admin как основной интерфейс управления контентом.
+- Python `3.12` (Docker image `python:3.12-slim`)
+- Django `>=5.0,<6.0`
+- Django REST Framework
+- PostgreSQL `16` (Docker image `postgres:16-alpine`)
+- React `18`
+- Vite `5`
+- Docker + Docker Compose
 
-### Frontend как слой рендеринга
-- Получает локализованные данные из backend API.
-- Рендерит секции и меню без хардкода текстов страниц.
-- Выполняет переключение языка и навигацию по slug без полной перезагрузки страницы.
+## 4. Структура проекта
 
-## 5. Интернационализация (i18n)
-### Как обрабатываются языки
-- Активные языки управляются в Django (по умолчанию `en`, `ru`, `zh`).
-- Локализованные значения хранятся на уровне сущностей, а не компонентов.
-- Переиспользуемые UI-строки отдаются backend в виде словарей контента.
-- Если перевод на RU или ZH отсутствует, API возвращает fallback на EN.
+```text
+backend/
+  api/
+  content/
+  config/
+  manage.py
+frontend/
+  src/
+  vite.config.ts
+docker-compose.yml
+README.md
+```
 
-### Как добавить новый язык
-1. Добавить язык в конфигурацию Django и записи языков в админ-панели.
-2. Добавить переводы для переиспользуемых ключей и контентных сущностей в Django Admin.
-3. Добавить языковые метки/ключи для корректного отображения в переключателе языка.
-4. Проверить API-ответы для нового языка и поведение fallback.
+## 5. Запуск локально (через Docker)
 
-## 6. Настройка окружения (высокоуровнево)
-- Подготовить Docker и Docker Compose.
-- Настроить параметры окружения для Django, подключения к БД и разрешенных origin.
-- Запустить backend, frontend и PostgreSQL через Docker Compose.
-- Применить миграции базы данных и создать учетную запись администратора.
-- Использовать Django Admin для управления контентом и переводами.
+### Требования
 
-## 7. Заметки по разработке
-- Поддерживать Django как единый источник истины для контента и переводов.
-- Не хардкодить пользовательские тексты в React-компонентах.
-- Сохранять маршрутизацию на базе slug и относительные URL.
-- Сохранять строку бренда Romanweiẞ без изменений.
-- При изменении схемы контента синхронно обновлять миграции и seed-логику.
+- Docker
+- Docker Compose
 
-## 8. Будущие улучшения
-- Добавить более строгую проверку полноты переводов для всех сущностей.
-- Добавить стратегию кеширования для высоконагруженных контентных endpoint.
-- Улучшить редакционные процессы (статусы draft/review/publish).
-- Добавить документацию API-контрактов для frontend и backoffice интеграции.
+### Шаги
+
+1. Убедитесь, что есть файл `.env` в корне (пример ниже).
+2. Запустите проект:
+
+```bash
+docker compose up --build
+```
+
+3. Откройте:
+
+- фронтенд: `http://localhost:5173/`
+- админка: `http://localhost:8000/admin/`
+
+Примечание: обычно миграции применяются автоматически командой backend-контейнера при старте.
+
+### Пример `.env`
+
+```env
+POSTGRES_DB=romanweiss
+POSTGRES_USER=romanweiss
+POSTGRES_PASSWORD=romanweiss
+
+DJANGO_SECRET_KEY=dev-secret-key-change-me
+DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,backend
+DJANGO_CSRF_TRUSTED_ORIGINS=http://localhost:5173
+```
+
+### Полезные команды (только через контейнер)
+
+```bash
+# Проверка Django
+docker compose run --rm backend python manage.py check
+
+# Ручной прогон миграций (если нужно)
+docker compose run --rm backend python manage.py migrate
+
+# Создать администратора
+docker compose exec backend python manage.py createsuperuser
+```
+
+## 6. URL и API
+
+### Основные URL
+
+- `http://localhost:5173/` — пользовательский интерфейс
+- `http://localhost:8000/admin/` — Django Admin
+- `http://localhost:8000/api/health/` — health endpoint
+
+### Основные API endpoint'ы
+
+- `GET /api/content/?lang=en|ru|zh`
+- `GET /api/navigation/?lang=en|ru|zh`
+- `GET /api/pages/<slug>/?lang=en|ru|zh`
+- `GET /api/expeditions/?lang=en|ru|zh`
+- `GET /api/stories/?lang=en|ru|zh`
+- `POST /api/contact-messages/`
+- `POST /api/i18n/set-language/`
+- `GET /api/v1/bootstrap/?lang=en|ru|zh`
+
+Также доступны `v1` и legacy-роуты для обратной совместимости.
+
+## 7. Маршруты фронтенда
+
+- `/` — главная
+- `/expeditions/` — индекс экспедиций
+- `/expeditions/:slug/` — детальная страница экспедиции
+- `/<page-slug>/` — контентные страницы из CMS
+
+## 8. Мультиязычность (i18n)
+
+Текущие языки:
+
+- `en` (по умолчанию)
+- `ru`
+- `zh`
+
+Как работает:
+
+- значения берутся из контентных сущностей и словарей переводов в БД;
+- язык учитывается в API (`?lang=`) и cookie;
+- при отсутствии перевода используется fallback на `en`.
+
+Как добавить новый язык:
+
+1. Добавьте язык в `Language` (админка) и при необходимости в `LANGUAGES` в Django settings.
+2. Заполните переводы для `SiteText`, контентных сущностей и `Translation`.
+3. Проверьте ответы API с `?lang=<new_code>`.
+4. Проверьте отображение в переключателе языков на фронтенде.
+
+## 9. Управление контентом (админка)
+
+В админке можно управлять:
+
+- брендом и общими настройками (`SiteSettings`);
+- меню и ссылками (`Menu`, `MenuItem`, `NavigationItem`);
+- страницами и секциями (`Page`, `PageSection`, `HeroSection`);
+- экспедициями и их медиа-блоками (`Expedition`, `ExpeditionMedia`);
+- категориями и историями (`Category`, `Story`);
+- переводами и языками (`Language`, `TranslationKey`, `Translation`, `SiteText`).
+
+Фото/видео для визуальных блоков рекомендуется поддерживать именно через админку Django.
+
+## 10. Замечания по разработке
+
+- Не изменять написание бренда `Romanweiẞ`.
+- Избегать хардкода пользовательских текстов в React-компонентах.
+- Ссылки и маршруты держать относительными, без жестких абсолютных путей там, где это не требуется.
+- Для локального запуска используйте `docker compose up --build`.
+
+## 11. Где выложить в общий доступ бесплатно
+
+Ниже практичные варианты для бесплатной публикации (лимиты могут меняться):
+
+### A) Просто открыть проект/README публично
+
+1. GitHub (публичный репозиторий, бесплатно)
+   - https://github.com/pricing
+
+Это минимальный и самый быстрый способ открыть README и исходники для всех.
+
+### B) Публичный хостинг фронтенда (статический/SPA)
+
+1. GitHub Pages
+   - https://docs.github.com/en/pages/getting-started-with-github-pages
+2. Vercel (Hobby)
+   - https://vercel.com/pricing
+3. Netlify (Free)
+   - https://www.netlify.com/pricing/
+4. Cloudflare Pages (Free)
+   - https://pages.cloudflare.com/
+
+### C) Полный стек (Django + БД + frontend)
+
+1. Render (есть бесплатные опции/ограничения)
+   - https://render.com/docs/free
+2. Railway (бесплатные лимиты/кредиты зависят от тарифа)
+   - https://docs.railway.com/reference/pricing
+
+Рекомендация для старта без оплаты:
+
+- код и README держать в публичном GitHub;
+- frontend — Vercel/Netlify/Cloudflare Pages;
+- backend + БД — Render (или Railway при подходящих лимитах).
+
+Перед публикацией проверьте актуальные ограничения и «sleep»/квоты на выбранной платформе.
+
+## 12. Лицензирование и публикация
+
+Если планируется публичный релиз, добавьте в репозиторий:
+
+- `LICENSE` (например, MIT),
+- `CONTRIBUTING.md` (по желанию),
+- актуальный `.env.example` без секретов.

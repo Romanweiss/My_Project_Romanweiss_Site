@@ -5,6 +5,7 @@ from rest_framework import serializers
 from .models import (
     Category,
     Expedition,
+    ExpeditionMedia,
     Menu,
     MenuItem,
     NavigationItem,
@@ -109,6 +110,16 @@ def _menu_item_label_key(menu_code: str, url_key: str, slug: str) -> str:
     if menu_code == "footer":
         return f"footer.nav.{token}"
     return f"nav.{token}"
+
+
+def _asset_or_legacy_url(asset, legacy_url: str) -> str:
+    legacy = legacy_url or ""
+    if asset and asset.resolved_url:
+        static_path = (getattr(asset, "static_path", "") or "").strip().lower()
+        if legacy and static_path.startswith("content/images/") and static_path.endswith("-default.svg"):
+            return legacy
+        return asset.resolved_url
+    return legacy
 
 
 class SiteTextSerializer(serializers.ModelSerializer):
@@ -421,9 +432,77 @@ class CategorySerializer(serializers.ModelSerializer):
 
 
 class ExpeditionSerializer(serializers.ModelSerializer):
+    cover_url = serializers.SerializerMethodField()
+    media_items = serializers.SerializerMethodField()
+
     class Meta:
         model = Expedition
-        fields = "__all__"
+        fields = (
+            "id",
+            "title",
+            "slug",
+            "subtitle",
+            "date_label",
+            "description",
+            "image_url",
+            "cover_url",
+            "media_items",
+            "order",
+            "is_published",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_cover_url(self, obj):
+        return _asset_or_legacy_url(obj.cover, obj.image_url)
+
+    def get_media_items(self, obj):
+        media_items = [item for item in obj.media_items.all() if item.is_published]
+        media_items.sort(key=lambda item: (item.order, item.id))
+        return ExpeditionMediaSerializer(
+            media_items,
+            many=True,
+            context=self.context,
+        ).data
+
+
+class ExpeditionMediaSerializer(serializers.ModelSerializer):
+    title = serializers.SerializerMethodField()
+    body = serializers.SerializerMethodField()
+    media_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ExpeditionMedia
+        fields = (
+            "id",
+            "kind",
+            "title",
+            "body",
+            "media_url",
+            "video_url",
+            "alt_text",
+            "order",
+            "is_published",
+        )
+
+    def get_title(self, obj):
+        return _localized_text(
+            obj.title,
+            obj.title_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
+
+    def get_body(self, obj):
+        return _localized_text(
+            obj.body,
+            obj.body_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
+
+    def get_media_url(self, obj):
+        return _asset_or_legacy_url(obj.media, obj.image_url)
 
 
 class StorySerializer(serializers.ModelSerializer):

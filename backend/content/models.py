@@ -197,6 +197,46 @@ class Expedition(OrderedPublishableModel):
         return self.title
 
 
+class ExpeditionMedia(OrderedPublishableModel):
+    KIND_IMAGE = "image"
+    KIND_VIDEO = "video"
+    KIND_STORY = "story"
+    KIND_CHOICES = (
+        (KIND_IMAGE, "Image"),
+        (KIND_VIDEO, "Video"),
+        (KIND_STORY, "Story"),
+    )
+
+    expedition = models.ForeignKey(
+        Expedition,
+        on_delete=models.CASCADE,
+        related_name="media_items",
+    )
+    kind = models.CharField("Kind", max_length=20, choices=KIND_CHOICES, default=KIND_IMAGE)
+    title = models.CharField("Title", max_length=180, blank=True)
+    title_i18n = models.JSONField("Title translations", default=dict, blank=True)
+    body = models.TextField("Body", blank=True)
+    body_i18n = models.JSONField("Body translations", default=dict, blank=True)
+    media = models.ForeignKey(
+        MediaAsset,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="expedition_media_items",
+    )
+    image_url = models.URLField("Image URL", max_length=500, blank=True)
+    video_url = models.URLField("Video URL", max_length=500, blank=True)
+    alt_text = models.CharField("Alt text", max_length=255, blank=True)
+
+    class Meta:
+        verbose_name = "Expedition media"
+        verbose_name_plural = "Expedition media"
+        ordering = ("expedition_id", "order", "id")
+
+    def __str__(self):
+        return f"{self.expedition.title}: {self.kind}"
+
+
 class Story(OrderedPublishableModel):
     title = models.CharField("Title", max_length=150)
     title_i18n = models.JSONField("Title translations", default=dict, blank=True)
