@@ -1,10 +1,10 @@
 import {
-  type CSSProperties,
   FormEvent,
   type MouseEvent,
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { getNavigation, getPageBySlug, sendContactMessage } from "./api";
@@ -93,7 +93,6 @@ export default function App() {
   const { lang, setLang, t, isLoading: isI18nLoading, content } = useI18n();
 
   const [theme, setTheme] = useState<ThemeMode>(readInitialTheme);
-  const [headerOverlayStrength, setHeaderOverlayStrength] = useState<number>(0);
   const [currentSlug, setCurrentSlug] = useState<string>(() =>
     typeof window === "undefined" ? "home" : pathToSlug(window.location.pathname)
   );
@@ -114,6 +113,9 @@ export default function App() {
   });
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>("idle");
   const [submitMessage, setSubmitMessage] = useState<string>("");
+  const pageRef = useRef<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLElement | null>(null);
+  const heroRef = useRef<HTMLElement | null>(null);
 
   const navigateToSlug = useCallback(
     (slug: string, replace = false) => {
@@ -156,15 +158,139 @@ export default function App() {
       return;
     }
 
-    const onScroll = () => {
-      const progress = Math.max(0, Math.min(window.scrollY / 280, 1));
-      setHeaderOverlayStrength(progress);
+    const pageElement = pageRef.current;
+    const headerElement = headerRef.current;
+    const heroElement = heroRef.current;
+
+    if (!pageElement || !headerElement) {
+      return;
+    }
+
+    const motionMediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let prefersReducedMotion = motionMediaQuery.matches;
+    let heroTop = 0;
+    let heroHeight = Math.max(window.innerHeight, 1);
+    let rafId = 0;
+    let lastZoom = Number.NaN;
+    let lastOverlayStrength = Number.NaN;
+    let lastHeaderStrength = Number.NaN;
+
+    const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+
+    const setCssVariable = (
+      element: HTMLElement,
+      variableName: string,
+      value: number,
+      lastValue: number
+    ): number => {
+      if (Math.abs(value - lastValue) < 0.0005) {
+        return lastValue;
+      }
+      element.style.setProperty(variableName, value.toFixed(4));
+      return value;
     };
 
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+    const measure = () => {
+      if (!heroElement) {
+        heroTop = 0;
+        heroHeight = Math.max(window.innerHeight, 1);
+        return;
+      }
+      heroTop = heroElement.offsetTop;
+      heroHeight = Math.max(heroElement.offsetHeight, window.innerHeight, 1);
+    };
+
+    const renderFrame = () => {
+      rafId = 0;
+
+      if (!heroElement) {
+        lastZoom = setCssVariable(pageElement, "--hero-zoom", 1, lastZoom);
+        lastOverlayStrength = setCssVariable(
+          pageElement,
+          "--hero-overlay-strength",
+          0,
+          lastOverlayStrength
+        );
+        lastHeaderStrength = setCssVariable(
+          headerElement,
+          "--header-overlay-strength",
+          1,
+          lastHeaderStrength
+        );
+        return;
+      }
+
+      const progress = clamp01((window.scrollY - heroTop) / heroHeight);
+      const heroZoom = prefersReducedMotion ? 1 : 1 + progress * 0.12;
+      const headerStrength = clamp01(progress * 1.05);
+
+      lastZoom = setCssVariable(pageElement, "--hero-zoom", heroZoom, lastZoom);
+      lastOverlayStrength = setCssVariable(
+        pageElement,
+        "--hero-overlay-strength",
+        progress,
+        lastOverlayStrength
+      );
+      lastHeaderStrength = setCssVariable(
+        headerElement,
+        "--header-overlay-strength",
+        headerStrength,
+        lastHeaderStrength
+      );
+    };
+
+    const scheduleFrame = () => {
+      if (rafId) {
+        return;
+      }
+      rafId = window.requestAnimationFrame(renderFrame);
+    };
+
+    const handleResize = () => {
+      measure();
+      scheduleFrame();
+    };
+
+    const handleMotionPreferenceChange = (event: MediaQueryListEvent) => {
+      prefersReducedMotion = event.matches;
+      scheduleFrame();
+    };
+
+    window.addEventListener("scroll", scheduleFrame, { passive: true });
+    window.addEventListener("resize", handleResize, { passive: true });
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (heroElement && "ResizeObserver" in window) {
+      resizeObserver = new ResizeObserver(() => {
+        measure();
+        scheduleFrame();
+      });
+      resizeObserver.observe(heroElement);
+    }
+
+    if (typeof motionMediaQuery.addEventListener === "function") {
+      motionMediaQuery.addEventListener("change", handleMotionPreferenceChange);
+    } else {
+      motionMediaQuery.addListener(handleMotionPreferenceChange);
+    }
+
+    measure();
+    scheduleFrame();
+
+    return () => {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
+      window.removeEventListener("scroll", scheduleFrame);
+      window.removeEventListener("resize", handleResize);
+      resizeObserver?.disconnect();
+      if (typeof motionMediaQuery.removeEventListener === "function") {
+        motionMediaQuery.removeEventListener("change", handleMotionPreferenceChange);
+      } else {
+        motionMediaQuery.removeListener(handleMotionPreferenceChange);
+      }
+    };
+  }, [page]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -346,14 +472,6 @@ export default function App() {
     }
   };
 
-  const headerStyle = useMemo(
-    () =>
-      ({
-        "--header-overlay-strength": headerOverlayStrength.toFixed(3),
-      }) as CSSProperties,
-    [headerOverlayStrength]
-  );
-
   if (!content || !content.site || !page) {
     return (
       <div className="page">
@@ -376,11 +494,8 @@ export default function App() {
   const newsletterNote = t("footer.newsletter_note", site.newsletter_note);
 
   return (
-    <div className="page">
-      <header
-        className={`site-header ${headerOverlayStrength > 0.25 || !heroSection ? "solid" : ""}`}
-        style={headerStyle}
-      >
+    <div className="page" ref={pageRef}>
+      <header className="site-header" ref={headerRef}>
         <div className="brand">{brandName}</div>
         <nav className="nav">
           {mainMenuItems.map((item) => (
@@ -421,7 +536,7 @@ export default function App() {
       </header>
 
       {heroSection ? (
-        <section id={heroSection.anchor || "journey"} className="hero">
+        <section id={heroSection.anchor || "journey"} className="hero" ref={heroRef}>
           <div
             className="hero-media"
             style={heroImage ? { backgroundImage: `url(${heroImage})` } : undefined}
@@ -460,11 +575,19 @@ export default function App() {
           </div>
           <div className="expedition-grid">
             {expeditionCards.map((item, index) => (
-              <article key={`${item.title || index}-${index}`} className="expedition-card">
+              <article
+                key={`${item.title || index}-${index}`}
+                className="expedition-card interactive-card"
+                tabIndex={0}
+              >
                 <div
                   className="expedition-image"
-                  style={item.image_url ? { backgroundImage: `url(${item.image_url})` } : undefined}
                 >
+                  <div
+                    className="expedition-image-media"
+                    style={item.image_url ? { backgroundImage: `url(${item.image_url})` } : undefined}
+                    aria-hidden="true"
+                  />
                   <span>{item.date_label || ""}</span>
                 </div>
                 <div className="expedition-copy">
@@ -490,9 +613,14 @@ export default function App() {
             {categoryItems.map((item, index) => (
               <div
                 key={`${item.title || index}-${index}`}
-                className={`category-card ${item.size || "small"}`}
-                style={item.image_url ? { backgroundImage: `url(${item.image_url})` } : undefined}
+                className={`category-card interactive-card ${item.size || "small"}`}
+                tabIndex={0}
               >
+                <div
+                  className="category-image-media"
+                  style={item.image_url ? { backgroundImage: `url(${item.image_url})` } : undefined}
+                  aria-hidden="true"
+                />
                 <div className="category-overlay">
                   <h3>{item.title || ""}</h3>
                 </div>
@@ -517,9 +645,15 @@ export default function App() {
                 className={`story-item ${index % 2 === 0 ? "" : "reverse"}`}
               >
                 <div
-                  className="story-image"
-                  style={item.image_url ? { backgroundImage: `url(${item.image_url})` } : undefined}
-                />
+                  className="story-image interactive-card"
+                  tabIndex={0}
+                >
+                  <div
+                    className="story-image-media"
+                    style={item.image_url ? { backgroundImage: `url(${item.image_url})` } : undefined}
+                    aria-hidden="true"
+                  />
+                </div>
                 <div className="story-copy">
                   <span>{item.date_label || ""}</span>
                   <h3>{item.title || ""}</h3>
