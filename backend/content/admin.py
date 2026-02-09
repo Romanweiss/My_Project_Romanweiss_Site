@@ -1,4 +1,5 @@
 from django import forms
+from django.conf import settings
 from django.contrib import admin
 from django.db import models
 from django.utils.html import format_html
@@ -6,7 +7,9 @@ from django.utils.html import format_html
 from .models import (
     Category,
     Expedition,
+    HeroSection,
     Language,
+    MediaAsset,
     Menu,
     MenuItem,
     NavigationItem,
@@ -22,7 +25,41 @@ from .models import (
 )
 
 
-TRANSLATION_LANGUAGES = (("ru", "RU"), ("zh", "ZH"))
+def _translation_languages() -> list[tuple[str, str]]:
+    default_lang = (settings.LANGUAGE_CODE or "en").split("-")[0].lower()
+    try:
+        rows = (
+            Language.objects.filter(is_active=True)
+            .exclude(code=default_lang)
+            .order_by("order", "id")
+            .values_list("code", "name")
+        )
+        data = [(str(code).lower(), str(name)) for code, name in rows if code]
+        if data:
+            return data
+    except Exception:
+        pass
+
+    fallback = []
+    for code, name in getattr(settings, "LANGUAGES", ()):
+        normalized = str(code).lower()
+        if normalized != default_lang:
+            fallback.append((normalized, str(name)))
+    return fallback
+
+
+def _asset_preview_html(asset: MediaAsset | None, legacy_url: str = "") -> str:
+    if asset and asset.resolved_url:
+        return format_html(
+            '<img src="{}" alt="preview" style="max-height: 80px; border-radius: 6px;" />',
+            asset.resolved_url,
+        )
+    if legacy_url:
+        return format_html(
+            '<img src="{}" alt="preview" style="max-height: 80px; border-radius: 6px;" />',
+            legacy_url,
+        )
+    return "-"
 
 
 class LocalizedJSONModelForm(forms.ModelForm):
@@ -34,13 +71,15 @@ class LocalizedJSONModelForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._language_codes = [code for code, _ in _translation_languages()]
+
         for field_name in self.translated_fields:
             i18n_field_name = f"{field_name}_i18n"
             current_translations = getattr(self.instance, i18n_field_name, {}) or {}
             model_field = self._meta.model._meta.get_field(field_name)
             is_long_text = isinstance(model_field, models.TextField)
 
-            for lang_code, lang_label in TRANSLATION_LANGUAGES:
+            for lang_code, lang_label in _translation_languages():
                 dynamic_name = f"{field_name}_{lang_code}"
                 base_label = self.fields[field_name].label or field_name
                 widget = forms.Textarea(attrs={"rows": 3}) if is_long_text else forms.TextInput()
@@ -57,7 +96,7 @@ class LocalizedJSONModelForm(forms.ModelForm):
         for field_name in self.translated_fields:
             i18n_field_name = f"{field_name}_i18n"
             updated_translations = dict(getattr(instance, i18n_field_name, {}) or {})
-            for lang_code, _ in TRANSLATION_LANGUAGES:
+            for lang_code in self._language_codes:
                 dynamic_name = f"{field_name}_{lang_code}"
                 raw_value = self.cleaned_data.get(dynamic_name, "")
                 value = raw_value.strip() if isinstance(raw_value, str) else ""
@@ -137,83 +176,20 @@ class MenuItemAdminForm(LocalizedJSONModelForm):
         model = MenuItem
 
 
-@admin.register(SiteSettings)
-class SiteSettingsAdmin(admin.ModelAdmin):
-    form = SiteSettingsAdminForm
-    list_display = ("brand_name", "contact_email", "updated_at")
-    search_fields = ("brand_name", "contact_email")
-    ordering = ("-updated_at",)
-    readonly_fields = ("created_at", "updated_at")
-    fieldsets = (
-        (
-            "Brand",
-            {"fields": ("brand_name", "brand_name_ru", "brand_name_zh", "contact_email")},
-        ),
-        (
-            "Footer",
-            {
-                "fields": (
-                    "footer_title",
-                    "footer_title_ru",
-                    "footer_title_zh",
-                    "footer_description",
-                    "footer_description_ru",
-                    "footer_description_zh",
-                    "footer_explore_title",
-                    "footer_explore_title_ru",
-                    "footer_explore_title_zh",
-                    "footer_social_title",
-                    "footer_social_title_ru",
-                    "footer_social_title_zh",
-                    "footer_newsletter_title",
-                    "footer_newsletter_title_ru",
-                    "footer_newsletter_title_zh",
-                    "newsletter_note",
-                    "newsletter_note_ru",
-                    "newsletter_note_zh",
-                )
-            },
-        ),
-        ("UI dictionary", {"fields": ("ui_i18n",)}),
-        ("SEO defaults", {"fields": ("seo_title", "seo_description", "seo_image")}),
-        ("System", {"fields": ("created_at", "updated_at")}),
-    )
+class HeroSectionAdminForm(LocalizedJSONModelForm):
+    translated_fields = ("kicker", "title", "subtitle", "cta_label", "scroll_label")
 
-    def has_add_permission(self, request):
-        if SiteSettings.objects.exists():
-            return False
-        return super().has_add_permission(request)
-
-
-@admin.register(SiteText)
-class SiteTextAdmin(admin.ModelAdmin):
-    form = SiteTextAdminForm
-    list_display = ("key", "group", "order", "is_published", "updated_at")
-    list_editable = ("order", "is_published")
-    list_filter = ("group", "is_published")
-    search_fields = ("key", "group", "description", "text")
-    ordering = ("group", "order", "key")
-    readonly_fields = ("created_at", "updated_at")
-    fieldsets = (
-        (
-            "Core",
-            {"fields": ("key", "group", "description", "text", "text_ru", "text_zh")},
-        ),
-        ("Publishing", {"fields": ("order", "is_published")}),
-        ("System", {"fields": ("created_at", "updated_at")}),
-    )
+    class Meta(LocalizedJSONModelForm.Meta):
+        model = HeroSection
 
 
 class ImagePreviewAdmin(admin.ModelAdmin):
     readonly_fields = ("image_preview", "created_at", "updated_at")
 
     def image_preview(self, obj):
-        if not obj.image_url:
-            return "-"
-        return format_html(
-            '<img src="{}" alt="preview" style="max-height: 80px; border-radius: 6px;" />',
-            obj.image_url,
-        )
+        legacy = getattr(obj, "image_url", "")
+        cover = getattr(obj, "cover", None)
+        return _asset_preview_html(cover, legacy)
 
     image_preview.short_description = "Preview"
 
@@ -243,14 +219,8 @@ class PageSectionInline(admin.StackedInline):
         "key",
         "section_type",
         "title",
-        "title_ru",
-        "title_zh",
         "subtitle",
-        "subtitle_ru",
-        "subtitle_zh",
         "body",
-        "body_ru",
-        "body_zh",
         "payload",
         "payload_i18n",
         "order",
@@ -265,8 +235,6 @@ class MenuItemInline(admin.TabularInline):
     extra = 0
     fields = (
         "label",
-        "label_ru",
-        "label_zh",
         "page",
         "href",
         "open_in_new_tab",
@@ -280,6 +248,62 @@ class TranslationInline(admin.TabularInline):
     extra = 0
     fields = ("language", "text", "updated_at")
     readonly_fields = ("updated_at",)
+
+
+@admin.register(SiteSettings)
+class SiteSettingsAdmin(admin.ModelAdmin):
+    form = SiteSettingsAdminForm
+    list_display = ("brand_name", "contact_email", "updated_at")
+    search_fields = ("brand_name", "contact_email")
+    ordering = ("-updated_at",)
+    readonly_fields = ("created_at", "updated_at")
+
+    def has_add_permission(self, request):
+        if SiteSettings.objects.exists():
+            return False
+        return super().has_add_permission(request)
+
+
+@admin.register(SiteText)
+class SiteTextAdmin(admin.ModelAdmin):
+    form = SiteTextAdminForm
+    list_display = ("key", "group", "order", "is_published", "updated_at")
+    list_editable = ("order", "is_published")
+    list_filter = ("group", "is_published")
+    search_fields = ("key", "group", "description", "text")
+    ordering = ("group", "order", "key")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(MediaAsset)
+class MediaAssetAdmin(admin.ModelAdmin):
+    list_display = ("title", "order", "is_published", "updated_at", "image_preview")
+    list_editable = ("order", "is_published")
+    search_fields = ("title", "alt_text", "static_path")
+    ordering = ("order", "id")
+    readonly_fields = ("image_preview", "created_at", "updated_at")
+
+    def image_preview(self, obj):
+        return _asset_preview_html(obj)
+
+    image_preview.short_description = "Preview"
+
+
+@admin.register(HeroSection)
+class HeroSectionAdmin(admin.ModelAdmin):
+    form = HeroSectionAdminForm
+    list_display = ("title", "page", "key", "order", "is_published", "updated_at")
+    list_editable = ("order", "is_published")
+    list_filter = ("is_published",)
+    search_fields = ("title", "kicker", "subtitle", "key", "page__slug")
+    ordering = ("order", "id")
+    prepopulated_fields = {"key": ("title",)}
+    readonly_fields = ("created_at", "updated_at", "image_preview")
+
+    def image_preview(self, obj):
+        return _asset_preview_html(obj.media)
+
+    image_preview.short_description = "Preview"
 
 
 @admin.register(Language)
@@ -331,38 +355,6 @@ class PageAdmin(admin.ModelAdmin):
     prepopulated_fields = {"slug": ("title",)}
     readonly_fields = ("created_at", "updated_at")
     inlines = (PageSectionInline,)
-    fieldsets = (
-        (
-            "Core",
-            {
-                "fields": (
-                    "title",
-                    "title_ru",
-                    "title_zh",
-                    "slug",
-                    "is_active",
-                    "is_home",
-                    "order",
-                    "is_published",
-                )
-            },
-        ),
-        (
-            "SEO",
-            {
-                "fields": (
-                    "seo_title",
-                    "seo_title_ru",
-                    "seo_title_zh",
-                    "seo_description",
-                    "seo_description_ru",
-                    "seo_description_zh",
-                    "seo_image",
-                )
-            },
-        ),
-        ("System", {"fields": ("created_at", "updated_at")}),
-    )
 
 
 @admin.register(PageSection)
@@ -382,32 +374,6 @@ class PageSectionAdmin(admin.ModelAdmin):
     ordering = ("page_id", "order", "id")
     readonly_fields = ("created_at", "updated_at")
     inlines = (SectionImageInline,)
-    fieldsets = (
-        (
-            "Core",
-            {
-                "fields": (
-                    "page",
-                    "key",
-                    "section_type",
-                    "title",
-                    "title_ru",
-                    "title_zh",
-                    "subtitle",
-                    "subtitle_ru",
-                    "subtitle_zh",
-                    "body",
-                    "body_ru",
-                    "body_zh",
-                    "payload",
-                    "payload_i18n",
-                    "order",
-                    "is_published",
-                )
-            },
-        ),
-        ("System", {"fields": ("created_at", "updated_at")}),
-    )
 
 
 @admin.register(Menu)
@@ -421,23 +387,6 @@ class MenuAdmin(admin.ModelAdmin):
     prepopulated_fields = {"code": ("title",)}
     readonly_fields = ("created_at", "updated_at")
     inlines = (MenuItemInline,)
-    fieldsets = (
-        (
-            "Core",
-            {
-                "fields": (
-                    "title",
-                    "title_ru",
-                    "title_zh",
-                    "code",
-                    "location",
-                    "order",
-                    "is_published",
-                )
-            },
-        ),
-        ("System", {"fields": ("created_at", "updated_at")}),
-    )
 
 
 @admin.register(MenuItem)
@@ -457,25 +406,6 @@ class MenuItemAdmin(admin.ModelAdmin):
     search_fields = ("label", "href", "menu__title")
     ordering = ("menu_id", "order", "id")
     readonly_fields = ("created_at", "updated_at")
-    fieldsets = (
-        (
-            "Core",
-            {
-                "fields": (
-                    "menu",
-                    "label",
-                    "label_ru",
-                    "label_zh",
-                    "page",
-                    "href",
-                    "open_in_new_tab",
-                    "order",
-                    "is_published",
-                )
-            },
-        ),
-        ("System", {"fields": ("created_at", "updated_at")}),
-    )
 
 
 @admin.register(Category)
@@ -500,7 +430,7 @@ class ExpeditionAdmin(ImagePreviewAdmin):
     )
     list_editable = ("order", "is_published")
     list_filter = ("is_published",)
-    search_fields = ("title", "slug", "description")
+    search_fields = ("title", "slug", "subtitle", "description")
     ordering = ("order", "id")
     prepopulated_fields = {"slug": ("title",)}
 
@@ -521,29 +451,6 @@ class StoryAdmin(ImagePreviewAdmin):
     search_fields = ("title", "slug", "description")
     ordering = ("order", "id")
     prepopulated_fields = {"slug": ("title",)}
-    fieldsets = (
-        (
-            "Core",
-            {
-                "fields": (
-                    "title",
-                    "title_ru",
-                    "title_zh",
-                    "slug",
-                    "date_label",
-                    "date_label_ru",
-                    "date_label_zh",
-                    "description",
-                    "description_ru",
-                    "description_zh",
-                    "image_url",
-                    "order",
-                    "is_published",
-                )
-            },
-        ),
-        ("System", {"fields": ("created_at", "updated_at")}),
-    )
 
 
 @admin.register(NavigationItem)
@@ -567,29 +474,6 @@ class NavigationItemAdmin(admin.ModelAdmin):
     ordering = ("menu", "order", "id")
     prepopulated_fields = {"slug": ("title",), "url_key": ("title",)}
     readonly_fields = ("created_at", "updated_at")
-    fieldsets = (
-        (
-            "Core",
-            {
-                "fields": (
-                    "menu",
-                    "section",
-                    "title",
-                    "title_ru",
-                    "title_zh",
-                    "slug",
-                    "url_key",
-                    "page",
-                    "href",
-                    "external_url",
-                    "open_in_new_tab",
-                    "order",
-                    "is_published",
-                )
-            },
-        ),
-        ("System", {"fields": ("created_at", "updated_at")}),
-    )
 
 
 @admin.register(SocialLink)

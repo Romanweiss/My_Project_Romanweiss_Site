@@ -1,0 +1,25 @@
+{% if stories %}
+  <section id="{{ stories_section.anchor|default:'stories' }}" class="section">
+    <header class="section-head">
+      <div>
+        {% if stories_section.payload.eyebrow %}<p class="eyebrow">{{ stories_section.payload.eyebrow }}</p>{% endif %}
+        <h2>{{ stories_section.payload.title|default:'' }}</h2>
+      </div>
+    </header>
+    <div class="story-list">
+      {% for story in stories %}
+        <article class="story-item">
+          <img src="{{ story.cover_url }}" alt="{{ story.title }}" />
+          <div>
+            <p class="meta">{{ story.date_label }}</p>
+            <h3>{{ story.title }}</h3>
+            <p>{{ story.description }}</p>
+            {% if stories_section.payload.action_label %}
+              <a href="#" class="link">{{ stories_section.payload.action_label }}</a>
+            {% endif %}
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}

@@ -1,0 +1,19 @@
+{% if categories %}
+  <section id="{{ categories_section.anchor|default:'categories' }}" class="section">
+    <header class="section-head">
+      <div>
+        {% if categories_section.payload.eyebrow %}<p class="eyebrow">{{ categories_section.payload.eyebrow }}</p>{% endif %}
+        <h2>{{ categories_section.payload.title|default:'' }}</h2>
+        {% if categories_section.payload.subtitle %}<p>{{ categories_section.payload.subtitle }}</p>{% endif %}
+      </div>
+    </header>
+    <div class="grid category-grid">
+      {% for category in categories %}
+        <article class="card {{ category.size }}">
+          <img src="{{ category.cover_url }}" alt="{{ category.title }}" />
+          <h3>{{ category.title }}</h3>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}

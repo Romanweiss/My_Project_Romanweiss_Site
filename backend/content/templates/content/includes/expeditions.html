@@ -1,0 +1,24 @@
+{% if expeditions %}
+  <section id="{{ expeditions_section.anchor|default:'expeditions' }}" class="section">
+    <header class="section-head">
+      <div>
+        {% if expeditions_section.payload.eyebrow %}<p class="eyebrow">{{ expeditions_section.payload.eyebrow }}</p>{% endif %}
+        <h2>{{ expeditions_section.payload.title|default:'' }}</h2>
+        {% if expeditions_section.payload.subtitle %}<p>{{ expeditions_section.payload.subtitle }}</p>{% endif %}
+      </div>
+      {% if expeditions_section.payload.action_label %}
+        <a href="#" class="button ghost">{{ expeditions_section.payload.action_label }}</a>
+      {% endif %}
+    </header>
+    <div class="grid expedition-grid">
+      {% for expedition in expeditions %}
+        <article class="card">
+          <img src="{{ expedition.cover_url }}" alt="{{ expedition.title }}" />
+          <p class="meta">{{ expedition.date_label }}</p>
+          <h3>{{ expedition.title }}</h3>
+          <p>{{ expedition.subtitle }}</p>
+        </article>
+      {% endfor %}
+    </div>
+  </section>
+{% endif %}

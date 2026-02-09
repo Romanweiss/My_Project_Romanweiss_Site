@@ -1,5 +1,6 @@
 from django.db import models
 from django.db.models import Q
+from django.templatetags.static import static
 
 
 class TimeStampedModel(models.Model):
@@ -118,6 +119,29 @@ class SiteSettings(TimeStampedModel, SeoFieldsMixin):
         return self.brand_name
 
 
+class MediaAsset(OrderedPublishableModel):
+    title = models.CharField("Title", max_length=120)
+    file = models.FileField("File", upload_to="content/media/", blank=True)
+    static_path = models.CharField("Static path", max_length=255, blank=True)
+    alt_text = models.CharField("Alt text", max_length=255, blank=True)
+
+    class Meta:
+        verbose_name = "Media asset"
+        verbose_name_plural = "Media assets"
+        ordering = ("order", "id")
+
+    @property
+    def resolved_url(self) -> str:
+        if self.file:
+            return self.file.url
+        if self.static_path:
+            return static(self.static_path)
+        return ""
+
+    def __str__(self):
+        return self.title
+
+
 class Category(OrderedPublishableModel):
     SIZE_LARGE = "large"
     SIZE_SMALL = "small"
@@ -131,6 +155,13 @@ class Category(OrderedPublishableModel):
     title = models.CharField("Title", max_length=120)
     slug = models.SlugField("Slug", max_length=140, unique=True)
     image_url = models.URLField("Image URL", max_length=500)
+    cover = models.ForeignKey(
+        MediaAsset,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="categories",
+    )
     size = models.CharField("Size", max_length=10, choices=SIZE_CHOICES, default=SIZE_SMALL)
 
     class Meta:
@@ -145,9 +176,17 @@ class Category(OrderedPublishableModel):
 class Expedition(OrderedPublishableModel):
     title = models.CharField("Title", max_length=150)
     slug = models.SlugField("Slug", max_length=170, unique=True)
+    subtitle = models.CharField("Subtitle", max_length=220, blank=True)
     date_label = models.CharField("Date label", max_length=80)
     description = models.TextField("Description")
     image_url = models.URLField("Image URL", max_length=500)
+    cover = models.ForeignKey(
+        MediaAsset,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="expeditions",
+    )
 
     class Meta:
         verbose_name = "Expedition"
@@ -167,6 +206,13 @@ class Story(OrderedPublishableModel):
     description = models.TextField("Description")
     description_i18n = models.JSONField("Description translations", default=dict, blank=True)
     image_url = models.URLField("Image URL", max_length=500)
+    cover = models.ForeignKey(
+        MediaAsset,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="stories",
+    )
 
     class Meta:
         verbose_name = "Story"
@@ -258,6 +304,40 @@ class Page(OrderedPublishableModel, SeoFieldsMixin):
         ]
 
     def __str__(self):
+        return self.title
+
+
+class HeroSection(OrderedPublishableModel):
+    page = models.OneToOneField(
+        Page,
+        on_delete=models.CASCADE,
+        related_name="hero",
+        null=True,
+        blank=True,
+    )
+    key = models.SlugField("Key", max_length=80, default="hero")
+    kicker = models.CharField("Kicker", max_length=220, blank=True)
+    title = models.CharField("Title", max_length=220)
+    subtitle = models.CharField("Subtitle", max_length=320, blank=True)
+    cta_label = models.CharField("CTA label", max_length=120, blank=True)
+    cta_url = models.CharField("CTA URL", max_length=255, blank=True)
+    scroll_label = models.CharField("Scroll label", max_length=120, blank=True)
+    media = models.ForeignKey(
+        MediaAsset,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="hero_sections",
+    )
+
+    class Meta:
+        verbose_name = "Hero section"
+        verbose_name_plural = "Hero sections"
+        ordering = ("order", "id")
+
+    def __str__(self):
+        if self.page_id:
+            return f"{self.page.slug}: {self.title}"
         return self.title
 
 

@@ -1,0 +1,17 @@
+{% if hero %}
+  <section id="{{ hero.anchor }}" class="hero">
+    <div class="hero-media" style="background-image:url('{{ hero.image_url }}');"></div>
+    <div class="hero-overlay"></div>
+    <div class="hero-content">
+      {% if hero.kicker %}<p class="eyebrow">{{ hero.kicker }}</p>{% endif %}
+      <h1>{{ hero.title }}</h1>
+      {% if hero.subtitle %}<p>{{ hero.subtitle }}</p>{% endif %}
+      <div class="hero-actions">
+        {% if hero.cta_label and hero.cta_url %}
+          <a href="{{ hero.cta_url }}" class="button">{{ hero.cta_label }}</a>
+        {% endif %}
+        {% if hero.scroll_label %}<span class="scroll">{{ hero.scroll_label }}</span>{% endif %}
+      </div>
+    </div>
+  </section>
+{% endif %}

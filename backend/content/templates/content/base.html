@@ -1,0 +1,68 @@
+{% load static i18n %}
+<!doctype html>
+<html lang="{{ LANGUAGE_CODE }}">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{{ page_title }}</title>
+  <link rel="stylesheet" href="{% static 'content/site.css' %}" />
+</head>
+<body>
+  <header class="site-header">
+    <a href="{% url 'content:home' %}" class="brand">{{ site.brand_name }}</a>
+    <nav class="main-nav">
+      {% for item in main_menu %}
+        <a href="{{ item.href }}"{% if item.open_in_new_tab %} target="_blank" rel="noreferrer"{% endif %}>{{ item.label }}</a>
+      {% endfor %}
+    </nav>
+    <nav class="lang-nav" aria-label="language switcher">
+      {% for item in language_switches %}
+        <a href="{{ item.url }}" class="{% if item.is_active %}active{% endif %}">{{ item.label }}</a>
+      {% endfor %}
+    </nav>
+  </header>
+
+  <main>
+    {% if messages %}
+      <section class="messages">
+        {% for message in messages %}
+          <p class="message {{ message.tags }}">{{ message }}</p>
+        {% endfor %}
+      </section>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-brand">
+      <h3>{{ site.footer_title }}</h3>
+      <p>{{ site.footer_description }}</p>
+    </div>
+    <div class="footer-columns">
+      <div>
+        <h4>{{ site.footer_explore_title }}</h4>
+        {% for item in footer_menu %}
+          <p><a href="{{ item.href }}"{% if item.open_in_new_tab %} target="_blank" rel="noreferrer"{% endif %}>{{ item.label }}</a></p>
+        {% endfor %}
+      </div>
+      <div>
+        <h4>{{ site.footer_social_title }}</h4>
+        <p>
+          {% for item in social_menu %}
+            <a href="{{ item.href }}"{% if item.open_in_new_tab %} target="_blank" rel="noreferrer"{% endif %}>{{ item.label }}</a>{% if not forloop.last %} | {% endif %}
+          {% endfor %}
+        </p>
+      </div>
+      <div>
+        <h4>{{ site.footer_newsletter_title }}</h4>
+        <p>{{ site.newsletter_note }}</p>
+        <form class="newsletter-form" action="#" method="post">
+          {% csrf_token %}
+          <input type="email" name="newsletter_email" placeholder="{{ ui.newsletter_placeholder }}" />
+          <button type="submit">{{ ui.newsletter_button }}</button>
+        </form>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

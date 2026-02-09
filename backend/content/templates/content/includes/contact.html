@@ -1,0 +1,36 @@
+{% if contact_section %}
+  <section id="{{ contact_section.anchor|default:'contact' }}" class="section contact">
+    <div class="split">
+      <div>
+        <h2>{{ contact_section.title }}</h2>
+        <p>{{ contact_section.body }}</p>
+        <div class="details">
+          <p><strong>{{ ui.detail_location }}:</strong> {{ contact_section.payload.location|default:"-" }}</p>
+          <p><strong>{{ ui.detail_email }}:</strong> {{ contact_section.payload.email|default:site.contact_email }}</p>
+          <p>
+            <strong>{{ ui.detail_socials }}:</strong>
+            {% for item in social_menu %}
+              {{ item.label }}{% if not forloop.last %} | {% endif %}
+            {% empty %}
+              -
+            {% endfor %}
+          </p>
+        </div>
+      </div>
+      <form class="contact-form" action="{% url 'content:contact-submit' %}" method="post">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}#{{ contact_section.anchor|default:'contact' }}" />
+        <label>{{ ui.form_name_label }}</label>
+        <input type="text" name="name" placeholder="{{ ui.form_name_placeholder }}" required />
+
+        <label>{{ ui.form_email_label }}</label>
+        <input type="email" name="email" placeholder="{{ ui.form_email_placeholder }}" required />
+
+        <label>{{ ui.form_message_label }}</label>
+        <textarea name="message" rows="5" placeholder="{{ ui.form_message_placeholder }}" required></textarea>
+
+        <button type="submit">{{ ui.form_submit }}</button>
+      </form>
+    </div>
+  </section>
+{% endif %}
