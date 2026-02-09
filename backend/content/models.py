@@ -50,6 +50,22 @@ class Language(TimeStampedModel):
         return f"{self.name} ({self.code})"
 
 
+class SiteText(OrderedPublishableModel):
+    key = models.CharField("Key", max_length=220, unique=True)
+    group = models.CharField("Group", max_length=80, blank=True)
+    description = models.CharField("Description", max_length=255, blank=True)
+    text = models.TextField("Text (EN)")
+    text_i18n = models.JSONField("Text translations", default=dict, blank=True)
+
+    class Meta:
+        verbose_name = "Site text"
+        verbose_name_plural = "Site texts"
+        ordering = ("group", "order", "key")
+
+    def __str__(self):
+        return self.key
+
+
 class SiteSettings(TimeStampedModel, SeoFieldsMixin):
     brand_name = models.CharField("Brand name", max_length=120, default="Romanweiẞ")
     brand_name_i18n = models.JSONField("Brand name translations", default=dict, blank=True)
@@ -144,9 +160,12 @@ class Expedition(OrderedPublishableModel):
 
 class Story(OrderedPublishableModel):
     title = models.CharField("Title", max_length=150)
+    title_i18n = models.JSONField("Title translations", default=dict, blank=True)
     slug = models.SlugField("Slug", max_length=170, unique=True)
     date_label = models.CharField("Date label", max_length=80)
+    date_label_i18n = models.JSONField("Date label translations", default=dict, blank=True)
     description = models.TextField("Description")
+    description_i18n = models.JSONField("Description translations", default=dict, blank=True)
     image_url = models.URLField("Image URL", max_length=500)
 
     class Meta:
@@ -165,16 +184,36 @@ class NavigationItem(OrderedPublishableModel):
         (SECTION_HEADER, "Header"),
         (SECTION_FOOTER, "Footer"),
     )
+    MENU_MAIN = "main"
+    MENU_FOOTER = "footer"
+    MENU_SOCIAL = "social"
+    MENU_CHOICES = (
+        (MENU_MAIN, "Main"),
+        (MENU_FOOTER, "Footer"),
+        (MENU_SOCIAL, "Social"),
+    )
 
     section = models.CharField("Section", max_length=20, choices=SECTION_CHOICES)
+    menu = models.CharField("Menu", max_length=20, choices=MENU_CHOICES, default=MENU_MAIN)
     title = models.CharField("Title", max_length=80)
+    title_i18n = models.JSONField("Title translations", default=dict, blank=True)
     slug = models.SlugField("Slug", max_length=100, unique=True)
+    url_key = models.SlugField("URL key", max_length=120, blank=True)
+    page = models.ForeignKey(
+        "Page",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="navigation_items",
+    )
+    external_url = models.CharField("External URL", max_length=300, blank=True)
     href = models.CharField("Href", max_length=200)
+    open_in_new_tab = models.BooleanField("Open in new tab", default=False)
 
     class Meta:
         verbose_name = "Navigation item"
         verbose_name_plural = "Navigation items"
-        ordering = ("section", "order", "id")
+        ordering = ("menu", "order", "id")
 
     def __str__(self):
         return f"{self.get_section_display()}: {self.title}"

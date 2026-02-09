@@ -7,14 +7,15 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { getI18nDictionary, setLanguageCookie } from "./api";
-import type { I18nDictionary, Locale } from "./types";
+import { getContent, setLanguageCookie } from "./api";
+import type { ContentResponse, I18nDictionary, Locale } from "./types";
 
 type I18nContextValue = {
   lang: Locale;
   setLang: (lang: Locale) => Promise<void>;
   t: (key: string, fallback?: string) => string;
   isLoading: boolean;
+  content: ContentResponse | null;
 };
 
 const LANG_STORAGE_KEY = "site.locale";
@@ -58,20 +59,23 @@ function initialLocale(): Locale {
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Locale>(initialLocale);
   const [dictionary, setDictionary] = useState<I18nDictionary>({});
+  const [content, setContent] = useState<ContentResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadDictionary() {
+    async function loadContent() {
       setIsLoading(true);
       try {
-        const data = await getI18nDictionary(lang);
+        const data = await getContent(lang);
         if (!cancelled) {
-          setDictionary(data);
+          setContent(data);
+          setDictionary(data.texts || {});
         }
-      } catch (error) {
+      } catch {
         if (!cancelled) {
+          setContent(null);
           setDictionary({});
         }
       } finally {
@@ -81,7 +85,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    void loadDictionary();
+    void loadContent();
     return () => {
       cancelled = true;
     };
@@ -117,8 +121,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<I18nContextValue>(
-    () => ({ lang, setLang, t, isLoading }),
-    [lang, setLang, t, isLoading]
+    () => ({ lang, setLang, t, isLoading, content }),
+    [lang, setLang, t, isLoading, content]
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;

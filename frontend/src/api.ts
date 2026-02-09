@@ -1,8 +1,9 @@
 import type {
   ContactMessagePayload,
-  I18nDictionary,
+  ContentResponse,
   Locale,
-  SiteStructureResponse,
+  NavigationResponse,
+  PageResponse,
 } from "./types";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
@@ -39,10 +40,6 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function getI18nDictionary(lang: Locale): Promise<I18nDictionary> {
-  return requestJson<I18nDictionary>(buildApiUrl("/i18n/", { lang }));
-}
-
 export async function setLanguageCookie(lang: Locale): Promise<void> {
   await requestJson<{ lang: string }>(buildApiUrl("/i18n/set-language/"), {
     method: "POST",
@@ -51,8 +48,26 @@ export async function setLanguageCookie(lang: Locale): Promise<void> {
   });
 }
 
-export async function getSiteStructure(lang: Locale): Promise<SiteStructureResponse> {
-  return requestJson<SiteStructureResponse>(buildApiUrl("/site/structure/", { lang }));
+export async function getContent(lang: Locale): Promise<ContentResponse> {
+  return requestJson<ContentResponse>(buildApiUrl("/content/", { lang }));
+}
+
+export async function getNavigation(
+  lang: Locale,
+  menu?: string
+): Promise<NavigationResponse> {
+  return requestJson<NavigationResponse>(
+    buildApiUrl("/navigation/", { lang, menu: menu || undefined })
+  );
+}
+
+export async function getPageBySlug(
+  slug: string,
+  lang: Locale
+): Promise<PageResponse> {
+  return requestJson<PageResponse>(
+    buildApiUrl(`/pages/${encodeURIComponent(slug)}/`, { lang })
+  );
 }
 
 export async function sendContactMessage(

@@ -83,6 +83,9 @@ body {
 }
 
 .site-header {
+  --header-overlay-strength: 0;
+  --header-overlay-top: calc(0.08 + (var(--header-overlay-strength) * 0.8));
+  --header-overlay-bottom: calc(0.02 + (var(--header-overlay-strength) * 0.68));
   position: fixed;
   inset: 0 0 auto 0;
   display: flex;
@@ -92,36 +95,32 @@ body {
   padding: 24px 6vw;
   z-index: 20;
   color: var(--header-text);
-  mix-blend-mode: lighten;
+  background: linear-gradient(
+    180deg,
+    rgba(12, 18, 23, var(--header-overlay-top)) 0%,
+    rgba(12, 18, 23, var(--header-overlay-bottom)) 100%
+  );
+  backdrop-filter: blur(calc(2px + (var(--header-overlay-strength) * 10px)));
+  box-shadow: 0 12px 28px rgba(9, 14, 20, calc(var(--header-overlay-strength) * 0.3));
   transition:
-    background-color 0.28s ease,
-    box-shadow 0.28s ease,
-    backdrop-filter 0.28s ease,
-    color 0.28s ease;
+    background 0.3s ease,
+    box-shadow 0.3s ease,
+    backdrop-filter 0.3s ease,
+    color 0.3s ease;
 }
 
 :root[data-theme="dark"] .site-header {
-  mix-blend-mode: normal;
+  --header-overlay-top: calc(0.18 + (var(--header-overlay-strength) * 0.72));
+  --header-overlay-bottom: calc(0.1 + (var(--header-overlay-strength) * 0.62));
 }
 
 .site-header.solid {
   mix-blend-mode: normal;
-  background: linear-gradient(
-    180deg,
-    rgba(12, 18, 23, 0.88) 0%,
-    rgba(12, 18, 23, 0.7) 100%
-  );
-  backdrop-filter: blur(12px);
-  box-shadow: 0 12px 28px rgba(9, 14, 20, 0.3);
+  --header-overlay-strength: 1;
 }
 
 :root[data-theme="dark"] .site-header.solid {
-  background: linear-gradient(
-    180deg,
-    rgba(7, 11, 16, 0.9) 0%,
-    rgba(7, 11, 16, 0.76) 100%
-  );
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.42);
 }
 
 .brand {

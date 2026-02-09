@@ -12,84 +12,10 @@ from .models import (
     PageSection,
     SectionImage,
     SiteSettings,
+    SiteText,
     SocialLink,
     Story,
 )
-
-DEFAULT_UI_TEXTS = {
-    "en": {
-        "loading_content": "Loading content...",
-        "content_unavailable": "Content is unavailable.",
-        "detail_location": "Location",
-        "detail_email": "Email",
-        "detail_socials": "Socials",
-        "contact_name_label": "Name",
-        "contact_name_placeholder": "Your name",
-        "contact_email_label": "Email",
-        "contact_email_placeholder": "your@email.com",
-        "contact_message_label": "Message",
-        "contact_message_placeholder": "Tell me about your project...",
-        "contact_submit": "Send message",
-        "contact_sending": "Sending...",
-        "contact_success": "Message sent. Thank you.",
-        "contact_error_default": "Could not send message.",
-        "newsletter_placeholder": "Email address",
-        "newsletter_button": "Join",
-        "theme_light": "Light",
-        "theme_dark": "Dark",
-        "lang_en": "EN",
-        "lang_ru": "RU",
-        "lang_zh": "中文",
-    },
-    "ru": {
-        "loading_content": "Загрузка контента...",
-        "content_unavailable": "Контент недоступен.",
-        "detail_location": "Место",
-        "detail_email": "Почта",
-        "detail_socials": "Соцсети",
-        "contact_name_label": "Имя",
-        "contact_name_placeholder": "Ваше имя",
-        "contact_email_label": "Почта",
-        "contact_email_placeholder": "your@email.com",
-        "contact_message_label": "Сообщение",
-        "contact_message_placeholder": "Расскажите о вашем проекте...",
-        "contact_submit": "Отправить сообщение",
-        "contact_sending": "Отправка...",
-        "contact_success": "Сообщение отправлено. Спасибо.",
-        "contact_error_default": "Не удалось отправить сообщение.",
-        "newsletter_placeholder": "Email адрес",
-        "newsletter_button": "Подписаться",
-        "theme_light": "Светлая",
-        "theme_dark": "Тёмная",
-        "lang_en": "EN",
-        "lang_ru": "RU",
-        "lang_zh": "中文",
-    },
-    "zh": {
-        "loading_content": "正在加载内容...",
-        "content_unavailable": "内容不可用。",
-        "detail_location": "地点",
-        "detail_email": "邮箱",
-        "detail_socials": "社交媒体",
-        "contact_name_label": "姓名",
-        "contact_name_placeholder": "你的姓名",
-        "contact_email_label": "邮箱",
-        "contact_email_placeholder": "your@email.com",
-        "contact_message_label": "留言",
-        "contact_message_placeholder": "请介绍一下你的项目...",
-        "contact_submit": "发送消息",
-        "contact_sending": "发送中...",
-        "contact_success": "消息已发送。谢谢。",
-        "contact_error_default": "发送失败。",
-        "newsletter_placeholder": "邮箱地址",
-        "newsletter_button": "订阅",
-        "theme_light": "浅色",
-        "theme_dark": "深色",
-        "lang_en": "EN",
-        "lang_ru": "RU",
-        "lang_zh": "中文",
-    },
-}
 
 
 def _request_lang(serializer: serializers.Serializer) -> str:
@@ -103,40 +29,99 @@ def _request_lang(serializer: serializers.Serializer) -> str:
     return raw or "en"
 
 
-def _localized_text(default_value: str, translations: dict, lang: str) -> str:
-    if lang == "en":
-        return default_value
+def _fallback_lang(serializer: serializers.Serializer) -> str:
+    fallback = serializer.context.get("fallback_lang")
+    if isinstance(fallback, str) and fallback.strip():
+        return fallback.strip().lower()
+    return "en"
+
+
+def _localized_text(
+    default_value: str,
+    translations: dict,
+    lang: str,
+    fallback_lang: str = "en",
+) -> str:
+    base = default_value if isinstance(default_value, str) else ""
+
     if isinstance(translations, dict):
         translated = translations.get(lang)
         if isinstance(translated, str) and translated.strip():
             return translated
-    return default_value
 
-
-def _localized_dict(default_value: dict, translations: dict, lang: str) -> dict:
-    base = deepcopy(default_value) if isinstance(default_value, dict) else {}
-    if lang == "en":
+    if base.strip():
         return base
+
     if isinstance(translations, dict):
+        fallback_value = translations.get(fallback_lang)
+        if isinstance(fallback_value, str) and fallback_value.strip():
+            return fallback_value
+
+    return base
+
+
+def _localized_dict(default_value: dict, translations: dict, lang: str, fallback_lang: str) -> dict:
+    base = deepcopy(default_value) if isinstance(default_value, dict) else {}
+    if not isinstance(translations, dict):
+        return base
+
+    fallback_payload = translations.get(fallback_lang)
+    if isinstance(fallback_payload, dict):
+        base = {**fallback_payload, **base}
+
+    if lang != fallback_lang:
         translated = translations.get(lang)
         if isinstance(translated, dict):
             base.update(translated)
     return base
 
 
-def _localized_ui_texts(translations: dict, lang: str) -> dict:
-    texts = deepcopy(DEFAULT_UI_TEXTS["en"])
-    if isinstance(translations, dict):
-        english_override = translations.get("en")
-        if isinstance(english_override, dict):
-            texts.update(english_override)
-    if lang != "en":
-        texts.update(deepcopy(DEFAULT_UI_TEXTS.get(lang, {})))
-        if isinstance(translations, dict):
-            lang_override = translations.get(lang)
-            if isinstance(lang_override, dict):
-                texts.update(lang_override)
-    return texts
+def _menu_item_href_from_parts(href: str, page, url_key: str, external_url: str) -> str:
+    if external_url:
+        return external_url
+    if page:
+        return "/" if page.is_home else f"/{page.slug}/"
+    if url_key:
+        return f"/#{url_key}"
+    if href:
+        return href
+    return "#"
+
+
+def _menu_item_kind(href: str, page, url_key: str, external_url: str) -> str:
+    if external_url:
+        return "external"
+    if page:
+        return "page"
+    if url_key:
+        return "anchor"
+    if href.startswith("#"):
+        return "anchor"
+    if href.startswith("/"):
+        return "page"
+    return "external"
+
+
+def _menu_item_label_key(menu_code: str, url_key: str, slug: str) -> str:
+    token = (url_key or slug or "item").replace("-", "_")
+    if menu_code == "social":
+        return f"social.{token}"
+    if menu_code == "footer":
+        return f"footer.nav.{token}"
+    return f"nav.{token}"
+
+
+class SiteTextSerializer(serializers.ModelSerializer):
+    value = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SiteText
+        fields = ("key", "group", "value")
+
+    def get_value(self, obj):
+        lang = _request_lang(self)
+        fallback = _fallback_lang(self)
+        return _localized_text(obj.text, obj.text_i18n, lang, fallback)
 
 
 class SiteSettingsSerializer(serializers.ModelSerializer):
@@ -170,24 +155,43 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
         )
 
     def get_brand_name(self, obj):
-        return _localized_text(obj.brand_name, obj.brand_name_i18n, _request_lang(self))
+        return _localized_text(
+            obj.brand_name,
+            obj.brand_name_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
 
     def get_footer_title(self, obj):
-        return _localized_text(obj.footer_title, obj.footer_title_i18n, _request_lang(self))
+        return _localized_text(
+            obj.footer_title,
+            obj.footer_title_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
 
     def get_footer_description(self, obj):
         return _localized_text(
-            obj.footer_description, obj.footer_description_i18n, _request_lang(self)
+            obj.footer_description,
+            obj.footer_description_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
         )
 
     def get_footer_explore_title(self, obj):
         return _localized_text(
-            obj.footer_explore_title, obj.footer_explore_title_i18n, _request_lang(self)
+            obj.footer_explore_title,
+            obj.footer_explore_title_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
         )
 
     def get_footer_social_title(self, obj):
         return _localized_text(
-            obj.footer_social_title, obj.footer_social_title_i18n, _request_lang(self)
+            obj.footer_social_title,
+            obj.footer_social_title_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
         )
 
     def get_footer_newsletter_title(self, obj):
@@ -195,6 +199,7 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
             obj.footer_newsletter_title,
             obj.footer_newsletter_title_i18n,
             _request_lang(self),
+            _fallback_lang(self),
         )
 
     def get_newsletter_note(self, obj):
@@ -202,10 +207,22 @@ class SiteSettingsSerializer(serializers.ModelSerializer):
             obj.newsletter_note,
             obj.newsletter_note_i18n,
             _request_lang(self),
+            _fallback_lang(self),
         )
 
     def get_ui(self, obj):
-        return _localized_ui_texts(obj.ui_i18n, _request_lang(self))
+        lang = _request_lang(self)
+        fallback = _fallback_lang(self)
+        ui_map = obj.ui_i18n if isinstance(obj.ui_i18n, dict) else {}
+        base = {}
+        fallback_ui = ui_map.get(fallback)
+        if isinstance(fallback_ui, dict):
+            base.update(fallback_ui)
+        if lang != fallback:
+            current_ui = ui_map.get(lang)
+            if isinstance(current_ui, dict):
+                base.update(current_ui)
+        return base
 
 
 class SectionImageSerializer(serializers.ModelSerializer):
@@ -227,12 +244,14 @@ class PageSectionSerializer(serializers.ModelSerializer):
     body = serializers.SerializerMethodField()
     payload = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
+    anchor = serializers.SerializerMethodField()
 
     class Meta:
         model = PageSection
         fields = (
             "id",
             "key",
+            "anchor",
             "section_type",
             "title",
             "subtitle",
@@ -249,16 +268,46 @@ class PageSectionSerializer(serializers.ModelSerializer):
         return SectionImageSerializer(images, many=True).data
 
     def get_title(self, obj):
-        return _localized_text(obj.title, obj.title_i18n, _request_lang(self))
+        return _localized_text(
+            obj.title,
+            obj.title_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
 
     def get_subtitle(self, obj):
-        return _localized_text(obj.subtitle, obj.subtitle_i18n, _request_lang(self))
+        return _localized_text(
+            obj.subtitle,
+            obj.subtitle_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
 
     def get_body(self, obj):
-        return _localized_text(obj.body, obj.body_i18n, _request_lang(self))
+        return _localized_text(
+            obj.body,
+            obj.body_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
 
     def get_payload(self, obj):
-        return _localized_dict(obj.payload, obj.payload_i18n, _request_lang(self))
+        return _localized_dict(
+            obj.payload,
+            obj.payload_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
+
+    def get_anchor(self, obj):
+        payload = self.get_payload(obj)
+        if isinstance(payload, dict):
+            payload_anchor = payload.get("anchor")
+            if isinstance(payload_anchor, str) and payload_anchor.strip():
+                return payload_anchor.strip()
+        if obj.key == "hero":
+            return "journey"
+        return obj.key
 
 
 class PageSerializer(serializers.ModelSerializer):
@@ -287,17 +336,30 @@ class PageSerializer(serializers.ModelSerializer):
     def get_sections(self, obj):
         sections = [section for section in obj.sections.all() if section.is_published]
         sections.sort(key=lambda section: (section.order, section.id))
-        return PageSectionSerializer(sections, many=True).data
+        return PageSectionSerializer(sections, many=True, context=self.context).data
 
     def get_title(self, obj):
-        return _localized_text(obj.title, obj.title_i18n, _request_lang(self))
+        return _localized_text(
+            obj.title,
+            obj.title_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
 
     def get_seo_title(self, obj):
-        return _localized_text(obj.seo_title, obj.seo_title_i18n, _request_lang(self))
+        return _localized_text(
+            obj.seo_title,
+            obj.seo_title_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
 
     def get_seo_description(self, obj):
         return _localized_text(
-            obj.seo_description, obj.seo_description_i18n, _request_lang(self)
+            obj.seo_description,
+            obj.seo_description_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
         )
 
 
@@ -319,14 +381,15 @@ class MenuItemSerializer(serializers.ModelSerializer):
         )
 
     def get_href(self, obj):
-        if obj.href:
-            return obj.href
-        if obj.page:
-            return "/" if obj.page.is_home else f"/{obj.page.slug}/"
-        return "#"
+        return _menu_item_href_from_parts(obj.href, obj.page, "", "")
 
     def get_label(self, obj):
-        return _localized_text(obj.label, obj.label_i18n, _request_lang(self))
+        return _localized_text(
+            obj.label,
+            obj.label_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
 
 
 class MenuSerializer(serializers.ModelSerializer):
@@ -340,10 +403,15 @@ class MenuSerializer(serializers.ModelSerializer):
     def get_items(self, obj):
         items = [item for item in obj.items.all() if item.is_published]
         items.sort(key=lambda item: (item.order, item.id))
-        return MenuItemSerializer(items, many=True).data
+        return MenuItemSerializer(items, many=True, context=self.context).data
 
     def get_title(self, obj):
-        return _localized_text(obj.title, obj.title_i18n, _request_lang(self))
+        return _localized_text(
+            obj.title,
+            obj.title_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -359,15 +427,91 @@ class ExpeditionSerializer(serializers.ModelSerializer):
 
 
 class StorySerializer(serializers.ModelSerializer):
+    title = serializers.SerializerMethodField()
+    date_label = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
+
     class Meta:
         model = Story
-        fields = "__all__"
+        fields = (
+            "id",
+            "title",
+            "slug",
+            "date_label",
+            "description",
+            "image_url",
+            "order",
+            "is_published",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_title(self, obj):
+        return _localized_text(
+            obj.title,
+            obj.title_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
+
+    def get_date_label(self, obj):
+        return _localized_text(
+            obj.date_label,
+            obj.date_label_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
+
+    def get_description(self, obj):
+        return _localized_text(
+            obj.description,
+            obj.description_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
 
 
 class NavigationItemSerializer(serializers.ModelSerializer):
+    label = serializers.SerializerMethodField()
+    label_key = serializers.SerializerMethodField()
+    href = serializers.SerializerMethodField()
+    kind = serializers.SerializerMethodField()
+    page_slug = serializers.CharField(source="page.slug", read_only=True)
+
     class Meta:
         model = NavigationItem
-        fields = "__all__"
+        fields = (
+            "id",
+            "menu",
+            "section",
+            "slug",
+            "url_key",
+            "label",
+            "label_key",
+            "kind",
+            "href",
+            "page_slug",
+            "open_in_new_tab",
+            "order",
+            "is_published",
+        )
+
+    def get_label(self, obj):
+        return _localized_text(
+            obj.title,
+            obj.title_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
+
+    def get_label_key(self, obj):
+        return _menu_item_label_key(obj.menu, obj.url_key, obj.slug)
+
+    def get_href(self, obj):
+        return _menu_item_href_from_parts(obj.href, obj.page, obj.url_key, obj.external_url)
+
+    def get_kind(self, obj):
+        return _menu_item_kind(obj.href, obj.page, obj.url_key, obj.external_url)
 
 
 class SocialLinkSerializer(serializers.ModelSerializer):

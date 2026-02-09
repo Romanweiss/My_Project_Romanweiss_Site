@@ -3,10 +3,13 @@ from rest_framework.routers import DefaultRouter
 
 from .viewsets import (
     CategoryViewSet,
+    ContentView,
     ExpeditionViewSet,
     I18nDictionaryView,
     MenuDetailView,
+    NavigationView,
     NavigationItemViewSet,
+    PageDetailView,
     PageViewSet,
     SetLanguageView,
     SiteStructureView,
@@ -22,13 +25,16 @@ legacy_router.register("settings", SiteSettingsViewSet, basename="settings")
 legacy_router.register("categories", CategoryViewSet, basename="categories")
 legacy_router.register("expeditions", ExpeditionViewSet, basename="expeditions")
 legacy_router.register("stories", StoryViewSet, basename="stories")
-legacy_router.register("navigation", NavigationItemViewSet, basename="navigation")
 legacy_router.register("social-links", SocialLinkViewSet, basename="social-links")
+legacy_router.register("navigation-items", NavigationItemViewSet, basename="navigation-items")
 
 v1_router = DefaultRouter()
 v1_router.register("v1/pages", PageViewSet, basename="v1-pages")
 
 urlpatterns = [
+    path("content/", ContentView.as_view(), name="content"),
+    path("navigation/", NavigationView.as_view(), name="navigation"),
+    path("pages/<slug:slug>/", PageDetailView.as_view(), name="page-detail"),
     path("i18n/", I18nDictionaryView.as_view(), name="i18n-dictionary"),
     path("i18n/set-language/", SetLanguageView.as_view(), name="set-language"),
     path("site/structure/", SiteStructureView.as_view(), name="site-structure"),

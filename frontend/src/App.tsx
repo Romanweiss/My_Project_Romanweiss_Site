@@ -1,10 +1,19 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { getSiteStructure, sendContactMessage } from "./api";
+import {
+  type CSSProperties,
+  FormEvent,
+  type MouseEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { getNavigation, getPageBySlug, sendContactMessage } from "./api";
 import { useI18n } from "./i18n";
 import type {
   ContactMessagePayload,
-  SiteStructureResponse,
-  StructureSection,
+  NavigationItem,
+  PageData,
+  PageSection,
 } from "./types";
 
 type SubmitStatus = "idle" | "sending" | "success" | "error";
@@ -30,7 +39,6 @@ type StoryItem = {
   image_url?: string;
 };
 
-const BRAND_NAME = "Romanweiẞ";
 const THEME_STORAGE_KEY = "site.theme";
 
 function readInitialTheme(): ThemeMode {
@@ -41,48 +49,28 @@ function readInitialTheme(): ThemeMode {
   return saved === "dark" ? "dark" : "light";
 }
 
-function sectionMap(data: SiteStructureResponse | null): Map<string, StructureSection> {
-  const map = new Map<string, StructureSection>();
-  for (const section of data?.sections ?? []) {
+function pathToSlug(pathname: string): string {
+  const cleaned = pathname.replace(/^\/+|\/+$/g, "");
+  return cleaned || "home";
+}
+
+function sectionMap(page: PageData | null): Map<string, PageSection> {
+  const map = new Map<string, PageSection>();
+  for (const section of page?.sections ?? []) {
     map.set(section.key, section);
   }
   return map;
 }
 
-function sectionText(
-  section: StructureSection | undefined,
-  field: "title" | "subtitle" | "body",
-  t: (key: string, fallback?: string) => string
-): string {
-  if (!section) {
-    return "";
-  }
-  if (field === "title") {
-    return t(section.title_key, section.title);
-  }
-  if (field === "subtitle") {
-    return t(section.subtitle_key, section.subtitle);
-  }
-  return t(section.body_key, section.body);
-}
-
-function payloadText(
-  section: StructureSection | undefined,
-  field: string,
-  t: (key: string, fallback?: string) => string,
-  fallback = ""
-): string {
+function payloadText(section: PageSection | undefined, field: string, fallback = ""): string {
   if (!section) {
     return fallback;
   }
-
   const value = section.payload[field];
-  const asText = typeof value === "string" ? value : fallback;
-  const key = section.payload_keys[field];
-  return key ? t(key, asText) : asText;
+  return typeof value === "string" ? value : fallback;
 }
 
-function payloadItems<T>(section: StructureSection | undefined, key: string): T[] {
+function payloadItems<T>(section: PageSection | undefined, key: string): T[] {
   if (!section) {
     return [];
   }
@@ -97,14 +85,28 @@ function safeHref(href: string): string {
   return href;
 }
 
+function isExternalHref(href: string): boolean {
+  return /^https?:\/\//i.test(href) || href.startsWith("mailto:");
+}
+
 export default function App() {
-  const { lang, setLang, t, isLoading: isI18nLoading } = useI18n();
+  const { lang, setLang, t, isLoading: isI18nLoading, content } = useI18n();
 
   const [theme, setTheme] = useState<ThemeMode>(readInitialTheme);
-  const [isHeaderSolid, setIsHeaderSolid] = useState<boolean>(false);
-  const [structure, setStructure] = useState<SiteStructureResponse | null>(null);
-  const [isStructureLoading, setIsStructureLoading] = useState<boolean>(true);
-  const [structureError, setStructureError] = useState<string>("");
+  const [headerOverlayStrength, setHeaderOverlayStrength] = useState<number>(0);
+  const [currentSlug, setCurrentSlug] = useState<string>(() =>
+    typeof window === "undefined" ? "home" : pathToSlug(window.location.pathname)
+  );
+  const [page, setPage] = useState<PageData | null>(null);
+  const [isPageLoading, setIsPageLoading] = useState<boolean>(true);
+  const [pageError, setPageError] = useState<string>("");
+  const [menus, setMenus] = useState<Record<string, NavigationItem[]>>({
+    main: [],
+    footer: [],
+    social: [],
+  });
+  const [isNavigationLoading, setIsNavigationLoading] = useState<boolean>(true);
+  const [navigationError, setNavigationError] = useState<string>("");
   const [contactForm, setContactForm] = useState<ContactMessagePayload>({
     name: "",
     email: "",
@@ -113,19 +115,33 @@ export default function App() {
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>("idle");
   const [submitMessage, setSubmitMessage] = useState<string>("");
 
+  const navigateToSlug = useCallback(
+    (slug: string, replace = false) => {
+      if (typeof window === "undefined") {
+        return;
+      }
+      const pageMeta = content?.pages.find((item) => item.slug === slug);
+      const path = pageMeta?.is_home || slug === "home" ? "/" : `/${slug}/`;
+      if (replace) {
+        window.history.replaceState({}, "", `${path}${window.location.search}`);
+      } else {
+        window.history.pushState({}, "", `${path}${window.location.search}`);
+      }
+      setCurrentSlug(slug);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    },
+    [content]
+  );
+
   useEffect(() => {
     if (typeof document === "undefined") {
       return;
     }
-    if (!structure?.site) {
-      document.title = BRAND_NAME;
+    if (!content?.site) {
       return;
     }
-    document.title = t(
-      structure.site.brand_key,
-      structure.site.brand_name || BRAND_NAME
-    );
-  }, [structure, t]);
+    document.title = t("brand.name", content.site.brand_name);
+  }, [content, t]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -141,7 +157,8 @@ export default function App() {
     }
 
     const onScroll = () => {
-      setIsHeaderSolid(window.scrollY > 24);
+      const progress = Math.max(0, Math.min(window.scrollY / 280, 1));
+      setHeaderOverlayStrength(progress);
     };
 
     onScroll();
@@ -150,35 +167,98 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const onPopState = () => {
+      setCurrentSlug(pathToSlug(window.location.pathname));
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(() => {
+    if (!content?.pages?.length) {
+      return;
+    }
+    const exists = content.pages.some((item) => item.slug === currentSlug);
+    if (exists || currentSlug === "home") {
+      return;
+    }
+    const homePage = content.pages.find((item) => item.is_home) || content.pages[0];
+    if (homePage) {
+      navigateToSlug(homePage.slug, true);
+    }
+  }, [content, currentSlug, navigateToSlug]);
+
+  useEffect(() => {
     let cancelled = false;
 
-    async function loadStructure() {
-      setIsStructureLoading(true);
-      setStructureError("");
+    async function loadNavigation() {
+      setIsNavigationLoading(true);
+      setNavigationError("");
       try {
-        const data = await getSiteStructure(lang);
+        const data = await getNavigation(lang);
         if (!cancelled) {
-          setStructure(data);
+          setMenus({
+            main: data.menus.main || [],
+            footer: data.menus.footer || [],
+            social: data.menus.social || [],
+          });
         }
       } catch (error) {
         if (!cancelled) {
-          setStructure(null);
-          setStructureError(error instanceof Error ? error.message : "");
+          setMenus({ main: [], footer: [], social: [] });
+          setNavigationError(error instanceof Error ? error.message : "");
         }
       } finally {
         if (!cancelled) {
-          setIsStructureLoading(false);
+          setIsNavigationLoading(false);
         }
       }
     }
 
-    void loadStructure();
+    void loadNavigation();
     return () => {
       cancelled = true;
     };
   }, [lang]);
 
-  const sections = useMemo(() => sectionMap(structure), [structure]);
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPage() {
+      setIsPageLoading(true);
+      setPageError("");
+      try {
+        const slug = currentSlug || "home";
+        const data = await getPageBySlug(slug, lang);
+        if (!cancelled) {
+          setPage(data.page);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          if (currentSlug !== "home") {
+            navigateToSlug("home", true);
+            return;
+          }
+          setPage(null);
+          setPageError(error instanceof Error ? error.message : "");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsPageLoading(false);
+        }
+      }
+    }
+
+    void loadPage();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentSlug, lang, navigateToSlug]);
+
+  const sections = useMemo(() => sectionMap(page), [page]);
   const heroSection = sections.get("hero");
   const introSection = sections.get("journal-intro");
   const expeditionsSection = sections.get("expeditions");
@@ -186,25 +266,26 @@ export default function App() {
   const storiesSection = sections.get("stories");
   const contactSection = sections.get("contact");
 
-  const mainMenuItems = structure?.menus.main ?? [];
-  const footerMenuItems = structure?.menus.footer ?? [];
-  const socialMenuItems = structure?.menus.social ?? [];
+  const mainMenuItems = menus.main ?? [];
+  const footerMenuItems = menus.footer ?? [];
+  const socialMenuItems = menus.social ?? [];
 
   const languages = useMemo(() => {
-    const list = [...(structure?.languages ?? [])];
+    const list = [...(content?.languages ?? [])];
     list.sort((a, b) => a.order - b.order || a.code.localeCompare(b.code));
     return list.length
       ? list
       : [{ code: lang, name: lang.toUpperCase(), is_default: true, order: 1 }];
-  }, [structure, lang]);
+  }, [content, lang]);
 
   const expeditionCards = payloadItems<ExpeditionCard>(expeditionsSection, "cards");
   const categoryItems = payloadItems<GalleryItem>(categoriesSection, "items");
   const storyItems = payloadItems<StoryItem>(storiesSection, "items");
   const heroImage =
-    heroSection?.images[0]?.image_url || payloadText(heroSection, "background_image_url", t);
+    heroSection?.images[0]?.image_url || payloadText(heroSection, "background_image_url");
 
-  const isLoading = isI18nLoading || isStructureLoading;
+  const isLoading =
+    isI18nLoading || isPageLoading || isNavigationLoading || !content || !page;
 
   const handleContactSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -224,32 +305,82 @@ export default function App() {
     }
   };
 
-  if (!structure || !structure.site) {
+  const handleNavClick = (event: MouseEvent<HTMLAnchorElement>, item: NavigationItem) => {
+    const href = safeHref(item.href);
+    if (isExternalHref(href) || item.kind === "external") {
+      return;
+    }
+
+    if (item.kind === "anchor" || href.startsWith("#") || href.startsWith("/#")) {
+      event.preventDefault();
+      const anchor = href.replace(/^\/?#/, "");
+      if (!anchor) {
+        return;
+      }
+      const scrollToAnchor = () => {
+        const target = document.getElementById(anchor);
+        if (target) {
+          target.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      };
+
+      const isHomePath = currentSlug === "home" || window.location.pathname === "/";
+      if (!isHomePath) {
+        navigateToSlug("home");
+        window.setTimeout(scrollToAnchor, 120);
+      } else {
+        scrollToAnchor();
+      }
+      return;
+    }
+
+    if (item.page_slug) {
+      event.preventDefault();
+      navigateToSlug(item.page_slug);
+      return;
+    }
+
+    if (href.startsWith("/")) {
+      event.preventDefault();
+      navigateToSlug(pathToSlug(href));
+    }
+  };
+
+  const headerStyle = useMemo(
+    () =>
+      ({
+        "--header-overlay-strength": headerOverlayStrength.toFixed(3),
+      }) as CSSProperties,
+    [headerOverlayStrength]
+  );
+
+  if (!content || !content.site || !page) {
     return (
       <div className="page">
         <section className="journal-intro">
           <p>{isLoading ? t("status.loading") : t("status.unavailable")}</p>
-          {structureError ? <small className="load-warning">{structureError}</small> : null}
+          {pageError ? <small className="load-warning">{pageError}</small> : null}
+          {navigationError ? <small className="load-warning">{navigationError}</small> : null}
         </section>
       </div>
     );
   }
 
-  const site = structure.site;
-  const brandName = t(site.brand_key, site.brand_name || BRAND_NAME);
-  const footerTitle = t(site.footer_title_key, site.footer_title || BRAND_NAME);
-  const footerDescription = t(site.footer_description_key, site.footer_description);
-  const footerExploreTitle = t(site.footer_explore_title_key, site.footer_explore_title);
-  const footerSocialTitle = t(site.footer_social_title_key, site.footer_social_title);
-  const footerNewsletterTitle = t(
-    site.footer_newsletter_title_key,
-    site.footer_newsletter_title
-  );
-  const newsletterNote = t(site.newsletter_note_key, site.newsletter_note);
+  const site = content.site;
+  const brandName = t("brand.name", site.brand_name);
+  const footerTitle = t("footer.title", site.footer_title);
+  const footerDescription = t("footer.description", site.footer_description);
+  const footerExploreTitle = t("footer.explore", site.footer_explore_title);
+  const footerSocialTitle = t("footer.social", site.footer_social_title);
+  const footerNewsletterTitle = t("footer.newsletter", site.footer_newsletter_title);
+  const newsletterNote = t("footer.newsletter_note", site.newsletter_note);
 
   return (
     <div className="page">
-      <header className={`site-header ${isHeaderSolid || !heroSection ? "solid" : ""}`}>
+      <header
+        className={`site-header ${headerOverlayStrength > 0.25 || !heroSection ? "solid" : ""}`}
+        style={headerStyle}
+      >
         <div className="brand">{brandName}</div>
         <nav className="nav">
           {mainMenuItems.map((item) => (
@@ -258,13 +389,14 @@ export default function App() {
               href={safeHref(item.href)}
               target={item.open_in_new_tab ? "_blank" : undefined}
               rel={item.open_in_new_tab ? "noreferrer" : undefined}
+              onClick={(event) => handleNavClick(event, item)}
             >
               {t(item.label_key, item.label)}
             </a>
           ))}
         </nav>
         <div className="controls">
-          <div className="lang-switch" role="group" aria-label={t("lang.switcher", "Language")}>
+          <div className="lang-switch" role="group" aria-label={t("lang.switcher")}>
             {languages.map((option) => (
               <button
                 key={option.code}
@@ -296,11 +428,11 @@ export default function App() {
           />
           <div className="hero-overlay" />
           <div className="hero-content">
-            <p className="hero-kicker">{payloadText(heroSection, "kicker", t)}</p>
-            <h1>{sectionText(heroSection, "title", t)}</h1>
-            <p className="hero-subtitle">{sectionText(heroSection, "subtitle", t)}</p>
+            <p className="hero-kicker">{payloadText(heroSection, "kicker")}</p>
+            <h1>{heroSection.title}</h1>
+            <p className="hero-subtitle">{heroSection.subtitle}</p>
             <div className="hero-scroll">
-              {payloadText(heroSection, "scroll_label", t, t("section.hero.scroll_label"))}
+              {payloadText(heroSection, "scroll_label", t("section.hero.scroll_label"))}
             </div>
           </div>
         </section>
@@ -308,8 +440,9 @@ export default function App() {
 
       {introSection ? (
         <section id={introSection.anchor} className="journal-intro">
-          <p>{sectionText(introSection, "body", t)}</p>
-          {structureError ? <small className="load-warning">{structureError}</small> : null}
+          <p>{introSection.body}</p>
+          {pageError ? <small className="load-warning">{pageError}</small> : null}
+          {navigationError ? <small className="load-warning">{navigationError}</small> : null}
         </section>
       ) : null}
 
@@ -317,16 +450,12 @@ export default function App() {
         <section id={expeditionsSection.anchor} className="section expeditions">
           <div className="section-heading">
             <div>
-              <p className="section-eyebrow">
-                {payloadText(expeditionsSection, "eyebrow", t)}
-              </p>
-              <h2>{payloadText(expeditionsSection, "title", t)}</h2>
-              <p className="section-subtitle">
-                {payloadText(expeditionsSection, "subtitle", t)}
-              </p>
+              <p className="section-eyebrow">{payloadText(expeditionsSection, "eyebrow")}</p>
+              <h2>{payloadText(expeditionsSection, "title")}</h2>
+              <p className="section-subtitle">{payloadText(expeditionsSection, "subtitle")}</p>
             </div>
             <button className="ghost-button" type="button">
-              {payloadText(expeditionsSection, "action_label", t)}
+              {payloadText(expeditionsSection, "action_label")}
             </button>
           </div>
           <div className="expedition-grid">
@@ -352,9 +481,9 @@ export default function App() {
         <section id={categoriesSection.anchor} className="section categories">
           <div className="section-heading">
             <div>
-              <p className="section-eyebrow">{payloadText(categoriesSection, "eyebrow", t)}</p>
-              <h2>{payloadText(categoriesSection, "title", t)}</h2>
-              <p className="section-subtitle">{payloadText(categoriesSection, "subtitle", t)}</p>
+              <p className="section-eyebrow">{payloadText(categoriesSection, "eyebrow")}</p>
+              <h2>{payloadText(categoriesSection, "title")}</h2>
+              <p className="section-subtitle">{payloadText(categoriesSection, "subtitle")}</p>
             </div>
           </div>
           <div className="category-grid">
@@ -377,8 +506,8 @@ export default function App() {
         <section id={storiesSection.anchor} className="section stories">
           <div className="section-heading center">
             <div>
-              <p className="section-eyebrow">{payloadText(storiesSection, "eyebrow", t)}</p>
-              <h2>{payloadText(storiesSection, "title", t)}</h2>
+              <p className="section-eyebrow">{payloadText(storiesSection, "eyebrow")}</p>
+              <h2>{payloadText(storiesSection, "title")}</h2>
             </div>
           </div>
           <div className="story-list">
@@ -396,7 +525,7 @@ export default function App() {
                   <h3>{item.title || ""}</h3>
                   <p>{item.description || ""}</p>
                   <button className="link-button" type="button">
-                    {payloadText(storiesSection, "action_label", t)}
+                    {payloadText(storiesSection, "action_label")}
                   </button>
                 </div>
               </article>
@@ -409,16 +538,16 @@ export default function App() {
         <section id={contactSection.anchor} className="section contact">
           <div className="contact-inner">
             <div className="contact-copy">
-              <h2>{sectionText(contactSection, "title", t)}</h2>
-              <p>{sectionText(contactSection, "body", t)}</p>
+              <h2>{contactSection.title}</h2>
+              <p>{contactSection.body}</p>
               <div className="contact-details">
                 <div>
                   <p className="detail-label">{t("detail.location")}</p>
-                  <p>{payloadText(contactSection, "location", t, "-")}</p>
+                  <p>{payloadText(contactSection, "location", "-")}</p>
                 </div>
                 <div>
                   <p className="detail-label">{t("detail.email")}</p>
-                  <p>{payloadText(contactSection, "email", t, site.contact_email)}</p>
+                  <p>{payloadText(contactSection, "email", site.contact_email)}</p>
                 </div>
                 <div>
                   <p className="detail-label">{t("detail.socials")}</p>
@@ -498,6 +627,7 @@ export default function App() {
                   href={safeHref(item.href)}
                   target={item.open_in_new_tab ? "_blank" : undefined}
                   rel={item.open_in_new_tab ? "noreferrer" : undefined}
+                  onClick={(event) => handleNavClick(event, item)}
                 >
                   {t(item.label_key, item.label)}
                 </a>
