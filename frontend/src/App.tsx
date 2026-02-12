@@ -1149,6 +1149,14 @@ export default function App() {
     }
   };
 
+  const handleBrandClick = useCallback(() => {
+    if (route.kind === "page" && route.slug === "home") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    navigateToRoute({ kind: "page", slug: "home" });
+  }, [navigateToRoute, route]);
+
   const openExpeditionDetail = useCallback(
     (slug: string) => {
       navigateToRoute({ kind: "expedition-detail", slug });
@@ -1310,7 +1318,14 @@ export default function App() {
         data-nav-visibility={isHeaderVisible ? "visible" : "hidden"}
         ref={headerRef}
       >
-        <div className="brand">{brandName}</div>
+        <button
+          type="button"
+          className="brand brand-link"
+          onClick={handleBrandClick}
+          aria-label={t("nav.home", "Go to home")}
+        >
+          {brandName}
+        </button>
         <nav className="nav">
           {mainMenuItems.map((item) => (
             <a
