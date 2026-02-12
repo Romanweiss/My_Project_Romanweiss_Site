@@ -104,12 +104,30 @@ body {
   );
   backdrop-filter: blur(calc(2px + (var(--header-overlay-strength) * 10px)));
   box-shadow: 0 12px 28px rgba(9, 14, 20, calc(var(--header-overlay-strength) * 0.3));
-  transition: color 0.3s ease;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+  transition:
+    color 0.3s ease,
+    opacity 620ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 620ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 :root[data-theme="dark"] .site-header {
   --header-overlay-top: calc(0.18 + (var(--header-overlay-strength) * 0.72));
   --header-overlay-bottom: calc(0.1 + (var(--header-overlay-strength) * 0.62));
+}
+
+.site-header[data-nav-visibility="hidden"] {
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+}
+
+.site-header[data-nav-visibility="visible"] {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
 .brand {
@@ -1083,6 +1101,17 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .site-header {
+    transition: color 0.3s ease;
+  }
+
+  .site-header[data-nav-visibility="hidden"],
+  .site-header[data-nav-visibility="visible"] {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+
   .hero-media {
     animation: none;
     opacity: 1;

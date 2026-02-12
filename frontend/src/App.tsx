@@ -121,6 +121,7 @@ type ResolvedExpedition = {
 };
 
 const THEME_STORAGE_KEY = "site.theme";
+const HOME_HEADER_REVEAL_DELAY_MS = 1000;
 
 function readInitialTheme(): ThemeMode {
   if (typeof window === "undefined") {
@@ -524,11 +525,22 @@ export default function App() {
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>("idle");
   const [submitMessage, setSubmitMessage] = useState<string>("");
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [isHeaderVisible, setIsHeaderVisible] = useState<boolean>(() => {
+    if (typeof window === "undefined") {
+      return true;
+    }
+    const initialRoute = parseRoute(window.location.pathname);
+    if (initialRoute.kind !== "page" || initialRoute.slug !== "home") {
+      return true;
+    }
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  });
   const pageRef = useRef<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLElement | null>(null);
   const heroRef = useRef<HTMLElement | null>(null);
   const lightboxTouchStartX = useRef<number | null>(null);
   const lightboxTouchStartY = useRef<number | null>(null);
+  const hasPlayedHomeIntroRef = useRef<boolean>(false);
 
   const navigateToRoute = useCallback(
     (nextRoute: AppRoute, replace = false) => {
@@ -924,6 +936,50 @@ export default function App() {
   const heroImage =
     heroSection?.images[0]?.image_url || payloadText(heroSection, "background_image_url");
 
+  useEffect(() => {
+    const isHomeRoute = route.kind === "page" && route.slug === "home";
+    if (!isHomeRoute) {
+      setIsHeaderVisible(true);
+      return;
+    }
+
+    if (hasPlayedHomeIntroRef.current) {
+      setIsHeaderVisible(true);
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      setIsHeaderVisible(true);
+      return;
+    }
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion) {
+      setIsHeaderVisible(true);
+      hasPlayedHomeIntroRef.current = true;
+      return;
+    }
+
+    if (isPageLoading) {
+      setIsHeaderVisible(false);
+      return;
+    }
+
+    if (!heroSection) {
+      setIsHeaderVisible(true);
+      hasPlayedHomeIntroRef.current = true;
+      return;
+    }
+
+    setIsHeaderVisible(false);
+    const timerId = window.setTimeout(() => {
+      setIsHeaderVisible(true);
+      hasPlayedHomeIntroRef.current = true;
+    }, HOME_HEADER_REVEAL_DELAY_MS);
+
+    return () => window.clearTimeout(timerId);
+  }, [heroSection, isPageLoading, route]);
+
   const expeditions = useMemo(
     () => resolveExpeditions(expeditionsData, expeditionCards, t),
     [expeditionsData, expeditionCards, t]
@@ -1249,7 +1305,11 @@ export default function App() {
 
   return (
     <div className="page" ref={pageRef}>
-      <header className="site-header" ref={headerRef}>
+      <header
+        className="site-header"
+        data-nav-visibility={isHeaderVisible ? "visible" : "hidden"}
+        ref={headerRef}
+      >
         <div className="brand">{brandName}</div>
         <nav className="nav">
           {mainMenuItems.map((item) => (
