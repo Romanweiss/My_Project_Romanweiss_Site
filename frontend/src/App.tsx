@@ -9,15 +9,24 @@ import {
   useRef,
   useState,
 } from "react";
-import { getExpeditions, getNavigation, getPageBySlug, sendContactMessage } from "./api";
+import {
+  getCategories,
+  getExpeditions,
+  getNavigation,
+  getPageBySlug,
+  getStories,
+  sendContactMessage,
+} from "./api";
 import { useI18n } from "./i18n";
 import type {
+  CategoryData,
   ContactMessagePayload,
   ExpeditionData,
   ExpeditionMediaItem,
   NavigationItem,
   PageData,
   PageSection,
+  StoryData,
 } from "./types";
 
 type SubmitStatus = "idle" | "sending" | "success" | "error";
@@ -27,7 +36,9 @@ type TranslateFn = (key: string, fallback?: string) => string;
 type AppRoute =
   | { kind: "page"; slug: string }
   | { kind: "expeditions-index" }
-  | { kind: "expedition-detail"; slug: string };
+  | { kind: "expedition-detail"; slug: string }
+  | { kind: "category-detail"; slug: string }
+  | { kind: "story-detail"; slug: string };
 
 type ExpeditionCard = {
   title?: string;
@@ -40,15 +51,43 @@ type ExpeditionCard = {
 
 type GalleryItem = {
   title?: string;
+  slug?: string;
+  description?: string;
   image_url?: string;
   size?: "large" | "small" | "wide";
 };
 
 type StoryItem = {
   title?: string;
+  slug?: string;
   date_label?: string;
   description?: string;
   image_url?: string;
+};
+
+type ResolvedStory = {
+  slug: string;
+  title: string;
+  dateLabel: string;
+  description: string;
+  imageUrl: string;
+};
+
+type ResolvedCategoryGalleryItem = {
+  title: string;
+  description: string;
+  imageUrl: string;
+  altText: string;
+  lightboxIndex: number;
+};
+
+type ResolvedCategory = {
+  slug: string;
+  title: string;
+  description: string;
+  size: "large" | "small" | "wide";
+  imageUrl: string;
+  galleryItems: ResolvedCategoryGalleryItem[];
 };
 
 type ResolvedMediaBlock =
@@ -113,6 +152,12 @@ function parseRoute(pathname: string): AppRoute {
     }
     return { kind: "expedition-detail", slug: parts[1] };
   }
+  if (parts[0] === "focus" && parts[1]) {
+    return { kind: "category-detail", slug: parts[1] };
+  }
+  if (parts[0] === "stories" && parts[1]) {
+    return { kind: "story-detail", slug: parts[1] };
+  }
 
   return { kind: "page", slug: cleaned };
 }
@@ -123,6 +168,12 @@ function routeToPath(route: AppRoute, pageSlugs: string[]): string {
   }
   if (route.kind === "expedition-detail") {
     return `/expeditions/${route.slug}/`;
+  }
+  if (route.kind === "category-detail") {
+    return `/focus/${route.slug}/`;
+  }
+  if (route.kind === "story-detail") {
+    return `/stories/${route.slug}/`;
   }
   if (route.slug === "home") {
     return "/";
@@ -328,6 +379,117 @@ function resolveExpeditions(
   });
 }
 
+function resolveStories(
+  apiStories: StoryData[],
+  sectionStories: StoryItem[],
+  t: TranslateFn
+): ResolvedStory[] {
+  if (apiStories.length) {
+    return apiStories.map((story, index) => {
+      const fallbackTitle = nonEmpty(story.title) || `Story ${index + 1}`;
+      const slug = nonEmpty(story.slug) || slugifyToken(fallbackTitle, `story-${index + 1}`);
+      return {
+        slug,
+        title: t(`story.${slug}.title`, fallbackTitle),
+        dateLabel: t(`story.${slug}.date_label`, nonEmpty(story.date_label)),
+        description: t(`story.${slug}.description`, nonEmpty(story.description)),
+        imageUrl: nonEmpty(story.cover_url) || nonEmpty(story.image_url),
+      };
+    });
+  }
+
+  return sectionStories.map((story, index) => {
+    const fallbackTitle = nonEmpty(story.title) || `Story ${index + 1}`;
+    const slug = nonEmpty(story.slug) || slugifyToken(fallbackTitle, `story-${index + 1}`);
+    return {
+      slug,
+      title: t(`story.${slug}.title`, fallbackTitle),
+      dateLabel: t(`story.${slug}.date_label`, nonEmpty(story.date_label)),
+      description: t(`story.${slug}.description`, nonEmpty(story.description)),
+      imageUrl: nonEmpty(story.image_url),
+    };
+  });
+}
+
+function normalizeCategorySize(value: unknown): "large" | "small" | "wide" {
+  return value === "large" || value === "small" || value === "wide" ? value : "small";
+}
+
+function resolveCategories(
+  apiCategories: CategoryData[],
+  sectionItems: GalleryItem[],
+  t: TranslateFn
+): ResolvedCategory[] {
+  if (apiCategories.length) {
+    return apiCategories.map((category, index) => {
+      const fallbackTitle = nonEmpty(category.title) || `Focus area ${index + 1}`;
+      const slug = nonEmpty(category.slug) || slugifyToken(fallbackTitle, `focus-${index + 1}`);
+      const imageUrl = nonEmpty(category.cover_url) || nonEmpty(category.image_url);
+      const galleryItems = (category.gallery_items || [])
+        .map((item) => {
+          const itemImageUrl = nonEmpty(item.media_url) || nonEmpty(item.image_url) || imageUrl;
+          if (!itemImageUrl) {
+            return null;
+          }
+          return {
+            title: nonEmpty(item.title) || fallbackTitle,
+            description: nonEmpty(item.description),
+            imageUrl: itemImageUrl,
+            altText: nonEmpty(item.alt_text) || nonEmpty(item.title) || fallbackTitle,
+          };
+        })
+        .filter((item): item is Omit<ResolvedCategoryGalleryItem, "lightboxIndex"> => item !== null)
+        .map((item, itemIndex) => ({ ...item, lightboxIndex: itemIndex }));
+
+      return {
+        slug,
+        title: t(`category.${slug}.title`, fallbackTitle),
+        description: t(`category.${slug}.description`, galleryItems[0]?.description || ""),
+        size: normalizeCategorySize(category.size),
+        imageUrl,
+        galleryItems:
+          galleryItems.length > 0
+            ? galleryItems
+            : imageUrl
+              ? [
+                  {
+                    title: fallbackTitle,
+                    description: t(`category.${slug}.description`, ""),
+                    imageUrl,
+                    altText: fallbackTitle,
+                    lightboxIndex: 0,
+                  },
+                ]
+              : [],
+      };
+    });
+  }
+
+  return sectionItems.map((item, index) => {
+    const fallbackTitle = nonEmpty(item.title) || `Focus area ${index + 1}`;
+    const slug = nonEmpty(item.slug) || slugifyToken(fallbackTitle, `focus-${index + 1}`);
+    const imageUrl = nonEmpty(item.image_url);
+    return {
+      slug,
+      title: t(`category.${slug}.title`, fallbackTitle),
+      description: t(`category.${slug}.description`, nonEmpty(item.description)),
+      size: normalizeCategorySize(item.size),
+      imageUrl,
+      galleryItems: imageUrl
+        ? [
+            {
+              title: fallbackTitle,
+              description: t(`category.${slug}.description`, nonEmpty(item.description)),
+              imageUrl,
+              altText: fallbackTitle,
+              lightboxIndex: 0,
+            },
+          ]
+        : [],
+    };
+  });
+}
+
 export default function App() {
   const { lang, setLang, t, isLoading: isI18nLoading, content } = useI18n();
 
@@ -348,6 +510,12 @@ export default function App() {
   const [expeditionsData, setExpeditionsData] = useState<ExpeditionData[]>([]);
   const [isExpeditionsLoading, setIsExpeditionsLoading] = useState<boolean>(true);
   const [expeditionsError, setExpeditionsError] = useState<string>("");
+  const [categoriesData, setCategoriesData] = useState<CategoryData[]>([]);
+  const [isCategoriesLoading, setIsCategoriesLoading] = useState<boolean>(true);
+  const [categoriesError, setCategoriesError] = useState<string>("");
+  const [storiesData, setStoriesData] = useState<StoryData[]>([]);
+  const [isStoriesLoading, setIsStoriesLoading] = useState<boolean>(true);
+  const [storiesError, setStoriesError] = useState<string>("");
   const [contactForm, setContactForm] = useState<ContactMessagePayload>({
     name: "",
     email: "",
@@ -557,7 +725,7 @@ export default function App() {
 
   useEffect(() => {
     setLightboxIndex(null);
-  }, [route.kind, route.kind === "expedition-detail" ? route.slug : ""]);
+  }, [route.kind, "slug" in route ? route.slug : ""]);
 
   useEffect(() => {
     if (route.kind !== "page") {
@@ -641,6 +809,64 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
+    async function loadCategories() {
+      setIsCategoriesLoading(true);
+      setCategoriesError("");
+      try {
+        const data = await getCategories(lang);
+        if (!cancelled) {
+          setCategoriesData(data || []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setCategoriesData([]);
+          setCategoriesError(error instanceof Error ? error.message : "");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsCategoriesLoading(false);
+        }
+      }
+    }
+
+    void loadCategories();
+    return () => {
+      cancelled = true;
+    };
+  }, [lang]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadStories() {
+      setIsStoriesLoading(true);
+      setStoriesError("");
+      try {
+        const data = await getStories(lang);
+        if (!cancelled) {
+          setStoriesData(data || []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setStoriesData([]);
+          setStoriesError(error instanceof Error ? error.message : "");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsStoriesLoading(false);
+        }
+      }
+    }
+
+    void loadStories();
+    return () => {
+      cancelled = true;
+    };
+  }, [lang]);
+
+  useEffect(() => {
+    let cancelled = false;
+
     async function loadPage() {
       setIsPageLoading(true);
       setPageError("");
@@ -703,12 +929,36 @@ export default function App() {
     [expeditionsData, expeditionCards, t]
   );
 
+  const stories = useMemo(
+    () => resolveStories(storiesData, storyItems, t),
+    [storiesData, storyItems, t]
+  );
+
+  const categories = useMemo(
+    () => resolveCategories(categoriesData, categoryItems, t),
+    [categoriesData, categoryItems, t]
+  );
+
   const activeExpedition = useMemo(() => {
     if (route.kind !== "expedition-detail") {
       return null;
     }
     return expeditions.find((item) => item.slug === route.slug) || null;
   }, [route, expeditions]);
+
+  const activeCategory = useMemo(() => {
+    if (route.kind !== "category-detail") {
+      return null;
+    }
+    return categories.find((item) => item.slug === route.slug) || null;
+  }, [route, categories]);
+
+  const activeStory = useMemo(() => {
+    if (route.kind !== "story-detail") {
+      return null;
+    }
+    return stories.find((item) => item.slug === route.slug) || null;
+  }, [route, stories]);
 
   const detailBlocks = useMemo(() => {
     if (!activeExpedition) {
@@ -725,14 +975,41 @@ export default function App() {
     });
   }, [activeExpedition]);
 
+  const categoryDetailItems = useMemo(() => {
+    if (!activeCategory) {
+      return [] as ResolvedCategoryGalleryItem[];
+    }
+    if (activeCategory.galleryItems.length) {
+      return activeCategory.galleryItems;
+    }
+    if (!activeCategory.imageUrl) {
+      return [] as ResolvedCategoryGalleryItem[];
+    }
+    return [
+      {
+        title: activeCategory.title,
+        description: activeCategory.description,
+        imageUrl: activeCategory.imageUrl,
+        altText: activeCategory.title,
+        lightboxIndex: 0,
+      },
+    ];
+  }, [activeCategory]);
+
   const lightboxImages = useMemo(() => {
+    if (route.kind === "category-detail") {
+      return categoryDetailItems.map((item) => ({
+        src: item.imageUrl,
+        alt: item.altText,
+      }));
+    }
     return detailBlocks
       .filter((block): block is Extract<typeof block, { kind: "image" }> => block.kind === "image")
       .map((block) => ({
         src: block.imageUrl,
         alt: block.altText,
       }));
-  }, [detailBlocks]);
+  }, [categoryDetailItems, detailBlocks, route.kind]);
 
   const currentLightboxImage =
     lightboxIndex !== null && lightboxIndex >= 0 ? lightboxImages[lightboxIndex] : undefined;
@@ -742,6 +1019,8 @@ export default function App() {
     isPageLoading ||
     isNavigationLoading ||
     isExpeditionsLoading ||
+    isCategoriesLoading ||
+    isStoriesLoading ||
     !content ||
     !page;
 
@@ -821,6 +1100,20 @@ export default function App() {
     [navigateToRoute]
   );
 
+  const openCategoryDetail = useCallback(
+    (slug: string) => {
+      navigateToRoute({ kind: "category-detail", slug });
+    },
+    [navigateToRoute]
+  );
+
+  const openStoryDetail = useCallback(
+    (slug: string) => {
+      navigateToRoute({ kind: "story-detail", slug });
+    },
+    [navigateToRoute]
+  );
+
   const handleExpeditionCardKey = useCallback(
     (event: ReactKeyboardEvent<HTMLElement>, slug: string) => {
       if (event.key === "Enter" || event.key === " ") {
@@ -829,6 +1122,26 @@ export default function App() {
       }
     },
     [openExpeditionDetail]
+  );
+
+  const handleCategoryCardKey = useCallback(
+    (event: ReactKeyboardEvent<HTMLElement>, slug: string) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openCategoryDetail(slug);
+      }
+    },
+    [openCategoryDetail]
+  );
+
+  const handleStoryCardKey = useCallback(
+    (event: ReactKeyboardEvent<HTMLElement>, slug: string) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openStoryDetail(slug);
+      }
+    },
+    [openStoryDetail]
   );
 
   const handleLightboxNext = useCallback(() => {
@@ -874,6 +1187,17 @@ export default function App() {
   );
 
   useEffect(() => {
+    if (typeof document === "undefined" || lightboxIndex === null) {
+      return;
+    }
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [lightboxIndex]);
+
+  useEffect(() => {
     if (lightboxIndex === null) {
       return;
     }
@@ -898,6 +1222,7 @@ export default function App() {
           {pageError ? <small className="load-warning">{pageError}</small> : null}
           {navigationError ? <small className="load-warning">{navigationError}</small> : null}
           {expeditionsError ? <small className="load-warning">{expeditionsError}</small> : null}
+          {categoriesError ? <small className="load-warning">{categoriesError}</small> : null}
         </section>
       </div>
     );
@@ -973,16 +1298,14 @@ export default function App() {
           <div className="hero-overlay" />
           <div className="hero-content">
             <p className="hero-kicker">{payloadText(heroSection, "kicker")}</p>
-            <h1>{heroSection.title}</h1>
+            <div className="hero-title-wrap">
+              <h1>{heroSection.title}</h1>
+              <span className="hero-title-line" aria-hidden="true" />
+            </div>
             <p className="hero-subtitle">{heroSection.subtitle}</p>
             <div className="hero-scroll-wrap">
               <div className="hero-scroll">
                 {payloadText(heroSection, "scroll_label", t("section.hero.scroll_label"))}
-              </div>
-              <div className="hero-scroll-arrow" aria-hidden="true">
-                {Array.from({ length: 7 }).map((_, index) => (
-                  <span key={`scroll-segment-${index}`} />
-                ))}
               </div>
             </div>
           </div>
@@ -995,6 +1318,8 @@ export default function App() {
           {pageError ? <small className="load-warning">{pageError}</small> : null}
           {navigationError ? <small className="load-warning">{navigationError}</small> : null}
           {expeditionsError ? <small className="load-warning">{expeditionsError}</small> : null}
+          {categoriesError ? <small className="load-warning">{categoriesError}</small> : null}
+          {storiesError ? <small className="load-warning">{storiesError}</small> : null}
         </section>
       ) : null}
 
@@ -1055,21 +1380,25 @@ export default function App() {
             </div>
           </div>
           <div className="category-grid">
-            {categoryItems.map((item, index) => (
-              <div
-                key={`${item.title || index}-${index}`}
+            {categories.map((item, index) => (
+              <article
+                key={`${item.slug || index}-${index}`}
                 className={`category-card interactive-card ${item.size || "small"}`}
                 tabIndex={0}
+                role="button"
+                onClick={() => openCategoryDetail(item.slug)}
+                onKeyDown={(event) => handleCategoryCardKey(event, item.slug)}
+                aria-label={`${t("category.card.cta", "Open focus area")}: ${item.title || ""}`}
               >
                 <div
                   className="category-image-media"
-                  style={item.image_url ? { backgroundImage: `url(${item.image_url})` } : undefined}
+                  style={item.imageUrl ? { backgroundImage: `url(${item.imageUrl})` } : undefined}
                   aria-hidden="true"
                 />
                 <div className="category-overlay">
                   <h3>{item.title || ""}</h3>
                 </div>
-              </div>
+              </article>
             ))}
           </div>
         </section>
@@ -1084,26 +1413,30 @@ export default function App() {
             </div>
           </div>
           <div className="story-list">
-            {storyItems.map((item, index) => (
+            {stories.map((item, index) => (
               <article
-                key={`${item.title || index}-${index}`}
+                key={`${item.slug || index}-${index}`}
                 className={`story-item ${index % 2 === 0 ? "" : "reverse"}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => openStoryDetail(item.slug)}
+                onKeyDown={(event) => handleStoryCardKey(event, item.slug)}
+                aria-label={`${t("stories.index.card_cta", "Open story")}: ${item.title || ""}`}
               >
                 <div
                   className="story-image interactive-card"
-                  tabIndex={0}
                 >
                   <div
                     className="story-image-media"
-                    style={item.image_url ? { backgroundImage: `url(${item.image_url})` } : undefined}
+                    style={item.imageUrl ? { backgroundImage: `url(${item.imageUrl})` } : undefined}
                     aria-hidden="true"
                   />
                 </div>
                 <div className="story-copy">
-                  <span>{item.date_label || ""}</span>
+                  <span>{item.dateLabel || ""}</span>
                   <h3>{item.title || ""}</h3>
                   <p>{item.description || ""}</p>
-                  <button className="link-button" type="button">
+                  <button className="link-button" type="button" onClick={() => openStoryDetail(item.slug)}>
                     {payloadText(storiesSection, "action_label")}
                   </button>
                 </div>
@@ -1299,6 +1632,94 @@ export default function App() {
                   );
                 })}
               </div>
+            </>
+          )}
+        </section>
+      ) : null}
+
+      {route.kind === "category-detail" ? (
+        <section className="section expedition-detail category-detail">
+          <button
+            type="button"
+            className="link-button expedition-back"
+            onClick={() => {
+              navigateToRoute({ kind: "page", slug: "home" });
+              window.setTimeout(() => {
+                const anchorId = categoriesSection?.anchor || "categories";
+                const target = document.getElementById(anchorId);
+                if (target) {
+                  target.scrollIntoView({ behavior: "smooth", block: "start" });
+                }
+              }, 120);
+            }}
+          >
+            {t("category.detail.back", "Back to focus areas")}
+          </button>
+
+          {!activeCategory ? (
+            <p className="section-subtitle">{t("status.unavailable", "Content is unavailable.")}</p>
+          ) : (
+            <>
+              <header className="expedition-detail-header">
+                <p className="section-eyebrow">{t("category.detail.gallery_title", "Gallery")}</p>
+                <h2>{activeCategory.title}</h2>
+                <p className="section-subtitle expedition-detail-lead">{activeCategory.description}</p>
+              </header>
+              <div className="category-detail-grid">
+                {categoryDetailItems.map((item, index) => (
+                  <button
+                    key={`${item.title || index}-${index}`}
+                    type="button"
+                    className="category-gallery-card"
+                    onClick={() => setLightboxIndex(item.lightboxIndex)}
+                    aria-label={`${t("lightbox.open_image", "Open image")}: ${item.altText}`}
+                  >
+                    <img src={item.imageUrl} alt={item.altText} />
+                    <div className="category-gallery-copy">
+                      <h4>{item.title}</h4>
+                      {item.description ? <p>{item.description}</p> : null}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+      ) : null}
+
+      {route.kind === "story-detail" ? (
+        <section className="section expedition-detail">
+          <button
+            type="button"
+            className="link-button expedition-back"
+            onClick={() => {
+              navigateToRoute({ kind: "page", slug: "home" });
+              window.setTimeout(() => {
+                const anchorId = storiesSection?.anchor || "stories";
+                const target = document.getElementById(anchorId);
+                if (target) {
+                  target.scrollIntoView({ behavior: "smooth", block: "start" });
+                }
+              }, 120);
+            }}
+          >
+            {t("story.detail.back", "Back to stories")}
+          </button>
+
+          {!activeStory ? (
+            <p className="section-subtitle">{t("status.unavailable", "Content is unavailable.")}</p>
+          ) : (
+            <>
+              <header className="expedition-detail-header">
+                <p className="section-eyebrow">{activeStory.dateLabel}</p>
+                <h2>{activeStory.title}</h2>
+                <p className="section-subtitle expedition-detail-lead">{activeStory.description}</p>
+              </header>
+              {activeStory.imageUrl ? (
+                <article className="expedition-media-card image">
+                  <img src={activeStory.imageUrl} alt={activeStory.title} />
+                </article>
+              ) : null}
             </>
           )}
         </section>

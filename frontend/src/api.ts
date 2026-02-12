@@ -1,10 +1,12 @@
 import type {
+  CategoryData,
   ContactMessagePayload,
   ContentResponse,
   ExpeditionData,
   Locale,
   NavigationResponse,
   PageResponse,
+  StoryData,
 } from "./types";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
@@ -73,6 +75,14 @@ export async function getPageBySlug(
 
 export async function getExpeditions(lang: Locale): Promise<ExpeditionData[]> {
   return requestJson<ExpeditionData[]>(buildApiUrl("/expeditions/", { lang }));
+}
+
+export async function getCategories(lang: Locale): Promise<CategoryData[]> {
+  return requestJson<CategoryData[]>(buildApiUrl("/categories/", { lang }));
+}
+
+export async function getStories(lang: Locale): Promise<StoryData[]> {
+  return requestJson<StoryData[]>(buildApiUrl("/stories/", { lang }));
 }
 
 export async function sendContactMessage(

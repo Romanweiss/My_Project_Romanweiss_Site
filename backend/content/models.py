@@ -173,6 +173,36 @@ class Category(OrderedPublishableModel):
         return self.title
 
 
+class CategoryGalleryItem(OrderedPublishableModel):
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.CASCADE,
+        related_name="gallery_items",
+    )
+    title = models.CharField("Title", max_length=180, blank=True)
+    title_i18n = models.JSONField("Title translations", default=dict, blank=True)
+    description = models.TextField("Description", blank=True)
+    description_i18n = models.JSONField("Description translations", default=dict, blank=True)
+    media = models.ForeignKey(
+        MediaAsset,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="category_gallery_items",
+    )
+    image_url = models.URLField("Image URL", max_length=500, blank=True)
+    alt_text = models.CharField("Alt text", max_length=255, blank=True)
+
+    class Meta:
+        verbose_name = "Category gallery item"
+        verbose_name_plural = "Category gallery items"
+        ordering = ("category_id", "order", "id")
+
+    def __str__(self):
+        label = self.title or f"item-{self.id}"
+        return f"{self.category.title}: {label}"
+
+
 class Expedition(OrderedPublishableModel):
     title = models.CharField("Title", max_length=150)
     slug = models.SlugField("Slug", max_length=170, unique=True)

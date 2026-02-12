@@ -15,6 +15,7 @@ from api.models import ContactMessage
 
 from .models import (
     Category,
+    CategoryGalleryItem,
     Expedition,
     ExpeditionMedia,
     HeroSection,
@@ -96,7 +97,7 @@ def _text(texts: dict[str, str], key: str, default: str = "") -> str:
 def _resolve_media_url(asset, fallback_static_path: str, legacy_url: str = "") -> str:
     if asset and asset.resolved_url:
         return asset.resolved_url
-    if legacy_url and not _is_external(legacy_url):
+    if legacy_url:
         return legacy_url
     return static(fallback_static_path)
 
@@ -347,6 +348,22 @@ def _expedition_payload(expedition: Expedition, texts: dict[str, str], lang_code
     }
 
 
+def _category_payload(category: Category, texts: dict[str, str]) -> dict:
+    key_prefix = f"category.{category.slug}"
+    return {
+        "title": _text(texts, f"{key_prefix}.title", category.title),
+        "description": _text(texts, f"{key_prefix}.description", ""),
+        "slug": category.slug,
+        "size": category.size,
+        "cover_url": _resolve_media_url(
+            category.cover,
+            "content/images/category-default.svg",
+            category.image_url,
+        ),
+        "detail_url": reverse("content:category-detail", kwargs={"slug": category.slug}),
+    }
+
+
 class ContactMessageForm(forms.ModelForm):
     class Meta:
         model = ContactMessage
@@ -389,6 +406,9 @@ class SiteContextMixin:
                 "Routes through remote locations.",
             ),
             "expeditions_index_cta": _text(texts, "expeditions.index.card_cta", "Open expedition"),
+            "category_card_cta": _text(texts, "category.card.cta", "Open focus area"),
+            "category_detail_back": _text(texts, "category.detail.back", "Back to focus areas"),
+            "category_detail_gallery_title": _text(texts, "category.detail.gallery_title", "Gallery"),
             "expedition_detail_back": _text(texts, "expedition.detail.back", "Back to expeditions"),
             "expedition_detail_media_title": _text(texts, "expedition.detail.media_title", "Media"),
             "expedition_detail_story_title": _text(texts, "expedition.detail.story_title", "Field notes"),
@@ -475,21 +495,10 @@ class BaseContentPageView(SiteContextMixin, TemplateView):
             for expedition in Expedition.objects.filter(is_published=True).select_related("cover").order_by("order", "id")
         ]
 
-        categories = []
-        for category in Category.objects.filter(is_published=True).select_related("cover").order_by("order", "id"):
-            key_prefix = f"category.{category.slug}"
-            categories.append(
-                {
-                    "title": _text(texts, f"{key_prefix}.title", category.title),
-                    "slug": category.slug,
-                    "size": category.size,
-                    "cover_url": _resolve_media_url(
-                        category.cover,
-                        "content/images/category-default.svg",
-                        category.image_url,
-                    ),
-                }
-            )
+        categories = [
+            _category_payload(category, texts)
+            for category in Category.objects.filter(is_published=True).select_related("cover").order_by("order", "id")
+        ]
 
         stories = []
         for story in Story.objects.filter(is_published=True).select_related("cover").order_by("order", "id"):
@@ -570,6 +579,88 @@ class ExpeditionsIndexView(SiteContextMixin, TemplateView):
                 "expeditions": expeditions,
                 "index_title": context["ui"]["expeditions_index_title"],
                 "index_subtitle": context["ui"]["expeditions_index_subtitle"],
+                "page_title": context["site"].get("brand_name", ""),
+            }
+        )
+        return context
+
+
+class CategoryDetailView(SiteContextMixin, TemplateView):
+    template_name = "content/category_detail.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+
+        category = (
+            Category.objects.filter(is_published=True, slug=self.kwargs.get("slug"))
+            .select_related("cover")
+            .first()
+        )
+        if category is None:
+            raise Http404("Category not found.")
+
+        base = self._site_context("content:category-detail", {"slug": category.slug})
+        context.update(base)
+
+        lang_code = context["_lang_code"]
+        fallback_lang = context["_fallback_lang"]
+        texts = context["_texts"]
+
+        category_payload = _category_payload(category, texts)
+        gallery_items_qs = (
+            CategoryGalleryItem.objects.filter(category=category, is_published=True)
+            .select_related("media")
+            .order_by("order", "id")
+        )
+
+        gallery_items = []
+        lightbox_images = []
+
+        for item in gallery_items_qs:
+            title = _localize_text(item.title, item.title_i18n, lang_code, fallback_lang)
+            description = _localize_text(
+                item.description,
+                item.description_i18n,
+                lang_code,
+                fallback_lang,
+            )
+            image_url = _resolve_media_url(
+                item.media,
+                "content/images/category-default.svg",
+                item.image_url or category.image_url,
+            )
+            alt_text = item.alt_text or title or category_payload["title"]
+            lightbox_index = len(lightbox_images)
+            lightbox_images.append({"src": image_url, "alt": alt_text})
+            gallery_items.append(
+                {
+                    "title": title,
+                    "description": description,
+                    "image_url": image_url,
+                    "alt_text": alt_text,
+                    "lightbox_index": lightbox_index,
+                }
+            )
+
+        if not gallery_items:
+            fallback_image = category_payload["cover_url"]
+            lightbox_images.append({"src": fallback_image, "alt": category_payload["title"]})
+            gallery_items = [
+                {
+                    "title": category_payload["title"],
+                    "description": category_payload["description"],
+                    "image_url": fallback_image,
+                    "alt_text": category_payload["title"],
+                    "lightbox_index": 0,
+                }
+            ]
+
+        context.update(
+            {
+                "category": category_payload,
+                "gallery_items": gallery_items,
+                "lightbox_images": lightbox_images,
+                "category_back_url": f"{reverse('content:home')}#categories",
                 "page_title": context["site"].get("brand_name", ""),
             }
         )

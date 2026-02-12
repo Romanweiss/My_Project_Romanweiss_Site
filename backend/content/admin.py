@@ -6,6 +6,7 @@ from django.utils.html import format_html
 
 from .models import (
     Category,
+    CategoryGalleryItem,
     Expedition,
     ExpeditionMedia,
     HeroSection,
@@ -163,6 +164,13 @@ class StoryAdminForm(LocalizedJSONModelForm):
         model = Story
 
 
+class CategoryGalleryItemAdminForm(LocalizedJSONModelForm):
+    translated_fields = ("title", "description")
+
+    class Meta(LocalizedJSONModelForm.Meta):
+        model = CategoryGalleryItem
+
+
 class ExpeditionMediaAdminForm(LocalizedJSONModelForm):
     translated_fields = ("title", "body")
 
@@ -266,6 +274,30 @@ class ExpeditionMediaInline(admin.StackedInline):
         "order",
         "is_published",
     )
+
+
+class CategoryGalleryItemInline(admin.StackedInline):
+    model = CategoryGalleryItem
+    form = CategoryGalleryItemAdminForm
+    extra = 0
+    fields = (
+        "title",
+        "description",
+        "media",
+        "image_url",
+        "alt_text",
+        "image_preview",
+        "order",
+        "is_published",
+    )
+    readonly_fields = ("image_preview",)
+
+    def image_preview(self, obj):
+        if not obj:
+            return "-"
+        return _asset_preview_html(getattr(obj, "media", None), getattr(obj, "image_url", ""))
+
+    image_preview.short_description = "Preview"
 
 
 class TranslationInline(admin.TabularInline):
@@ -441,6 +473,23 @@ class CategoryAdmin(ImagePreviewAdmin):
     search_fields = ("title", "slug")
     ordering = ("order", "id")
     prepopulated_fields = {"slug": ("title",)}
+    inlines = (CategoryGalleryItemInline,)
+
+
+@admin.register(CategoryGalleryItem)
+class CategoryGalleryItemAdmin(admin.ModelAdmin):
+    form = CategoryGalleryItemAdminForm
+    list_display = ("category", "title", "order", "is_published", "updated_at")
+    list_editable = ("order", "is_published")
+    list_filter = ("is_published", "category")
+    search_fields = ("category__title", "title", "description", "image_url", "alt_text")
+    ordering = ("category_id", "order", "id")
+    readonly_fields = ("created_at", "updated_at", "image_preview")
+
+    def image_preview(self, obj):
+        return _asset_preview_html(getattr(obj, "media", None), getattr(obj, "image_url", ""))
+
+    image_preview.short_description = "Preview"
 
 
 @admin.register(Expedition)

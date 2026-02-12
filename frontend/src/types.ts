@@ -136,3 +136,42 @@ export type ExpeditionData = {
   created_at: string;
   updated_at: string;
 };
+
+export type StoryData = {
+  id: number;
+  title: string;
+  slug: string;
+  date_label: string;
+  description: string;
+  image_url: string;
+  cover_url: string;
+  order: number;
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CategoryGalleryItemData = {
+  id: number;
+  title: string;
+  description: string;
+  image_url: string;
+  media_url: string;
+  alt_text: string;
+  order: number;
+  is_published: boolean;
+};
+
+export type CategoryData = {
+  id: number;
+  title: string;
+  slug: string;
+  size: "large" | "small" | "wide";
+  image_url: string;
+  cover_url: string;
+  gallery_items: CategoryGalleryItemData[];
+  order: number;
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
+};

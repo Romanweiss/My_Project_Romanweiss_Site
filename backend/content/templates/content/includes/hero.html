@@ -3,9 +3,10 @@
     <div class="hero-media" style="background-image:url('{{ hero.image_url }}');"></div>
     <div class="hero-overlay"></div>
     <div class="hero-content">
-      {% if hero.kicker %}<p class="eyebrow">{{ hero.kicker }}</p>{% endif %}
-      <h1>{{ hero.title }}</h1>
-      {% if hero.subtitle %}<p>{{ hero.subtitle }}</p>{% endif %}
+      {% if hero.kicker %}<p class="eyebrow hero-kicker">{{ hero.kicker }}</p>{% endif %}
+      <h1 class="hero-title">{{ hero.title }}</h1>
+      <span class="hero-title-line" aria-hidden="true"></span>
+      {% if hero.subtitle %}<p class="hero-subtitle">{{ hero.subtitle }}</p>{% endif %}
       <div class="hero-actions">
         {% if hero.cta_label and hero.cta_url %}
           <a href="{{ hero.cta_url }}" class="button">{{ hero.cta_label }}</a>
@@ -14,9 +15,6 @@
       {% if hero.scroll_label %}
         <div class="hero-scroll-indicator">
           <span class="scroll">{{ hero.scroll_label }}</span>
-          <span class="scroll-arrow" aria-hidden="true">
-            <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
-          </span>
         </div>
       {% endif %}
     </div>

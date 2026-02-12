@@ -1,6 +1,7 @@
 from django.urls import path
 
 from .web_views import (
+    CategoryDetailView,
     ContactSubmitView,
     ContentPageView,
     ExpeditionDetailView,
@@ -13,6 +14,7 @@ app_name = "content"
 urlpatterns = [
     path("", HomePageView.as_view(), name="home"),
     path("contact/submit/", ContactSubmitView.as_view(), name="contact-submit"),
+    path("focus/<slug:slug>/", CategoryDetailView.as_view(), name="category-detail"),
     path("expeditions/", ExpeditionsIndexView.as_view(), name="expeditions-index"),
     path(
         "expeditions/<slug:slug>/",

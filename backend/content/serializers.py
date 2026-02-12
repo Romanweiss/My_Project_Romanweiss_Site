@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from .models import (
     Category,
+    CategoryGalleryItem,
     Expedition,
     ExpeditionMedia,
     Menu,
@@ -426,9 +427,79 @@ class MenuSerializer(serializers.ModelSerializer):
 
 
 class CategorySerializer(serializers.ModelSerializer):
+    title = serializers.SerializerMethodField()
+    cover_url = serializers.SerializerMethodField()
+    gallery_items = serializers.SerializerMethodField()
+
     class Meta:
         model = Category
-        fields = "__all__"
+        fields = (
+            "id",
+            "title",
+            "slug",
+            "size",
+            "image_url",
+            "cover_url",
+            "gallery_items",
+            "order",
+            "is_published",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_title(self, obj):
+        return _localized_text(
+            obj.title,
+            {},
+            _request_lang(self),
+            _fallback_lang(self),
+        )
+
+    def get_cover_url(self, obj):
+        return _asset_or_legacy_url(obj.cover, obj.image_url)
+
+    def get_gallery_items(self, obj):
+        items = [item for item in obj.gallery_items.all() if item.is_published]
+        items.sort(key=lambda item: (item.order, item.id))
+        return CategoryGalleryItemSerializer(items, many=True, context=self.context).data
+
+
+class CategoryGalleryItemSerializer(serializers.ModelSerializer):
+    title = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
+    media_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CategoryGalleryItem
+        fields = (
+            "id",
+            "title",
+            "description",
+            "image_url",
+            "media_url",
+            "alt_text",
+            "order",
+            "is_published",
+        )
+
+    def get_title(self, obj):
+        return _localized_text(
+            obj.title,
+            obj.title_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
+
+    def get_description(self, obj):
+        return _localized_text(
+            obj.description,
+            obj.description_i18n,
+            _request_lang(self),
+            _fallback_lang(self),
+        )
+
+    def get_media_url(self, obj):
+        return _asset_or_legacy_url(obj.media, obj.image_url)
 
 
 class ExpeditionSerializer(serializers.ModelSerializer):
@@ -509,6 +580,7 @@ class StorySerializer(serializers.ModelSerializer):
     title = serializers.SerializerMethodField()
     date_label = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
+    cover_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Story
@@ -519,6 +591,7 @@ class StorySerializer(serializers.ModelSerializer):
             "date_label",
             "description",
             "image_url",
+            "cover_url",
             "order",
             "is_published",
             "created_at",
@@ -548,6 +621,9 @@ class StorySerializer(serializers.ModelSerializer):
             _request_lang(self),
             _fallback_lang(self),
         )
+
+    def get_cover_url(self, obj):
+        return _asset_or_legacy_url(obj.cover, obj.image_url)
 
 
 class NavigationItemSerializer(serializers.ModelSerializer):

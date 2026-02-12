@@ -614,9 +614,15 @@ class SiteSettingsViewSet(LocalizedSerializerContextMixin, viewsets.ReadOnlyMode
         return Response(serializer.data)
 
 
-class CategoryViewSet(viewsets.ReadOnlyModelViewSet):
+class CategoryViewSet(LocalizedSerializerContextMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = CategorySerializer
-    queryset = Category.objects.filter(is_published=True).order_by("order", "id")
+    queryset = (
+        Category.objects.filter(is_published=True)
+        .select_related("cover")
+        .prefetch_related("gallery_items__media")
+        .order_by("order", "id")
+    )
+    lookup_field = "slug"
     pagination_class = None
 
 
@@ -634,7 +640,12 @@ class ExpeditionViewSet(LocalizedSerializerContextMixin, viewsets.ReadOnlyModelV
 
 class StoryViewSet(LocalizedSerializerContextMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = StorySerializer
-    queryset = Story.objects.filter(is_published=True).order_by("order", "id")
+    queryset = (
+        Story.objects.filter(is_published=True)
+        .select_related("cover")
+        .order_by("order", "id")
+    )
+    lookup_field = "slug"
     pagination_class = None
 
 
